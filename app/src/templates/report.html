@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Pay Period Report</h2>
+
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Start Date</th><th>End Date</th><th>Income</th><th>Total Bills</th><th>Net</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in periods %}
+      <tr>
+        <td>{{ p.start }}</td>
+        <td>{{ p.end }}</td>
+        <td>${{ "%.2f"|format(p.income) }}</td>
+        <td>${{ "%.2f"|format(p.bills_due) }}</td>
+        <td>${{ "%.2f"|format(p.net) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
+
