@@ -6,11 +6,26 @@
   <!-- Add Income Form -->
   <form method="POST" class="row g-3 mb-4">
     <div class="col-md-3">
-      <input type="text" name="name" class="form-control" placeholder="Income Source" required />
+      <input
+        type="text"
+        name="name"
+        class="form-control"
+        placeholder="Income Source"
+        required
+      />
     </div>
+
     <div class="col-md-2">
-      <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount" required />
+      <input
+        type="number"
+        step="0.01"
+        name="amount"
+        class="form-control"
+        placeholder="Amount"
+        required
+      />
     </div>
+
     <div class="col-md-3">
       <select name="frequency" class="form-select" required>
         <option value="">Frequency</option>
@@ -19,9 +34,43 @@
         <option value="twice_monthly">Twice Monthly</option>
       </select>
     </div>
-    <div class="col-md-2">
-      <input type="date" name="next_pay" class="form-control" required />
+
+    <!-- Single next-pay date -->
+    <div id="date-input" class="col-md-2">
+      <input
+        type="date"
+        name="next_pay"
+        class="form-control"
+        required
+      />
     </div>
+
+    <!-- Twice-monthly day selectors -->
+    <div id="twice-input" class="col-md-4" style="display:none;">
+      <div class="row g-3">
+        <div class="col">
+          <input
+            type="number"
+            name="day1"
+            class="form-control"
+            placeholder="Day 1"
+            min="1"
+            max="31"
+          />
+        </div>
+        <div class="col">
+          <input
+            type="number"
+            name="day2"
+            class="form-control"
+            placeholder="Day 2"
+            min="1"
+            max="31"
+          />
+        </div>
+      </div>
+    </div>
+
     <div class="col-md-2">
       <button type="submit" class="btn btn-success w-100">Add Income</button>
     </div>
@@ -31,7 +80,11 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID</th><th>Name</th><th>Amount</th><th>Frequency</th><th>Next Pay</th>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Amount</th>
+        <th>Frequency</th>
+        <th>Next Pay / Days</th>
       </tr>
     </thead>
     <tbody>
@@ -41,10 +94,40 @@
         <td>{{ inc.name }}</td>
         <td>${{ "%.2f"|format(inc.amount) }}</td>
         <td>{{ inc.frequency.replace('_',' ').title() }}</td>
-        <td>{{ inc.next_pay }}</td>
+        <td>
+          {% if inc.frequency == 'twice_monthly' %}
+            {{ inc.day_of_month_1 }} &amp; {{ inc.day_of_month_2 }}
+          {% else %}
+            {{ inc.next_pay }}
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+
+  <!-- Toggle date vs day-of-month inputs -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const freq = document.querySelector('select[name="frequency"]');
+      const dateDiv = document.getElementById('date-input');
+      const twiceDiv = document.getElementById('twice-input');
+
+      function toggleFields() {
+        const isTwice = freq.value === 'twice_monthly';
+        dateDiv.style.display  = isTwice ? 'none'  : 'block';
+        twiceDiv.style.display = isTwice ? 'block' : 'none';
+
+        // require/hide fields appropriately
+        dateDiv.querySelector('input').required = !isTwice;
+        twiceDiv.querySelectorAll('input').forEach(i => {
+          i.required = isTwice;
+        });
+      }
+
+      freq.addEventListener('change', toggleFields);
+      toggleFields();
+    });
+  </script>
 {% endblock %}
 

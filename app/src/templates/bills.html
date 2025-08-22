@@ -6,17 +6,48 @@
   <!-- Add Bill Form -->
   <form method="POST" class="row g-3 mb-4">
     <div class="col-md-3">
-      <input type="text" name="name" class="form-control" placeholder="Bill Name" required />
+      <input
+        type="text"
+        name="name"
+        class="form-control"
+        placeholder="Bill Name"
+        required
+      />
     </div>
+
     <div class="col-md-3">
-      <input type="text" name="owner" class="form-control" placeholder="Owner" required />
+      <input
+        type="text"
+        name="owner"
+        class="form-control"
+        placeholder="Owner"
+        required
+      />
     </div>
+
     <div class="col-md-2">
-      <input type="date" name="due_date" class="form-control" required />
+      <input
+        type="number"
+        name="due_day"
+        class="form-control"
+        placeholder="Day of Month"
+        min="1"
+        max="31"
+        required
+      />
     </div>
+
     <div class="col-md-2">
-      <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount" required />
+      <input
+        type="number"
+        step="0.01"
+        name="amount"
+        class="form-control"
+        placeholder="Amount"
+        required
+      />
     </div>
+
     <div class="col-md-2">
       <button type="submit" class="btn btn-primary w-100">Add Bill</button>
     </div>
@@ -26,7 +57,11 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID</th><th>Name</th><th>Owner</th><th>Due Date</th><th>Amount</th>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Owner</th>
+        <th>Due Day</th>
+        <th>Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -35,7 +70,7 @@
         <td>{{ bill.id }}</td>
         <td>{{ bill.name }}</td>
         <td>{{ bill.owner }}</td>
-        <td>{{ bill.due_date }}</td>
+        <td>{{ bill.due_day }}</td>
         <td>${{ "%.2f"|format(bill.amount) }}</td>
       </tr>
       {% endfor %}

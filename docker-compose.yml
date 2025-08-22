@@ -1,4 +1,4 @@
-version: "2.4"
+version: "2.4"        # you can omit “version:” too in modern Compose
 
 services:
   db:
@@ -19,8 +19,13 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+    working_dir: /usr/src/app
+    volumes:
+      - ./app:/usr/src/app
     environment:
-      DATABASE_URL: "postgresql://finapp:finapp@db/finapp"
+      DATABASE_URL: postgresql://finapp:finapp@db:5432/finapp
+      FLASK_APP: src.app
+    command: flask run --host=0.0.0.0 --port=5000
     ports:
       - "5000:5000"
     depends_on:
