@@ -5,6 +5,9 @@
 
   <!-- Add Income Form -->
   <form method="POST" class="row g-3 mb-4">
+    {% if csrf_token %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% endif %}
     <div class="col-md-3">
       <input
         type="text"
@@ -72,7 +75,9 @@
     </div>
 
     <div class="col-md-2">
-      <button type="submit" class="btn btn-success w-100">Add Income</button>
+      <button type="submit" class="btn btn-success w-100">
+        Add Income
+      </button>
     </div>
   </form>
 
@@ -85,6 +90,7 @@
         <th>Amount</th>
         <th>Frequency</th>
         <th>Next Pay / Days</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -101,6 +107,24 @@
             {{ inc.next_pay }}
           {% endif %}
         </td>
+        <td>
+          <form
+            action="{{ url_for('main.delete_income', income_id=inc.id) }}"
+            method="post"
+            style="display:inline-block;"
+          >
+            {% if csrf_token %}
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+            <button
+              type="submit"
+              class="btn btn-sm btn-danger"
+              onclick="return confirm('Delete this income?');"
+            >
+              Delete
+            </button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -109,7 +133,7 @@
   <!-- Toggle date vs day-of-month inputs -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const freq = document.querySelector('select[name="frequency"]');
+      const freq    = document.querySelector('select[name="frequency"]');
       const dateDiv = document.getElementById('date-input');
       const twiceDiv = document.getElementById('twice-input');
 
@@ -118,7 +142,6 @@
         dateDiv.style.display  = isTwice ? 'none'  : 'block';
         twiceDiv.style.display = isTwice ? 'block' : 'none';
 
-        // require/hide fields appropriately
         dateDiv.querySelector('input').required = !isTwice;
         twiceDiv.querySelectorAll('input').forEach(i => {
           i.required = isTwice;
@@ -130,4 +153,3 @@
     });
   </script>
 {% endblock %}
-

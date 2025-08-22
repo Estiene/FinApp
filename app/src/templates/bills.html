@@ -5,6 +5,9 @@
 
   <!-- Add Bill Form -->
   <form method="POST" class="row g-3 mb-4">
+    {% if csrf_token %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% endif %}
     <div class="col-md-3">
       <input
         type="text"
@@ -49,7 +52,9 @@
     </div>
 
     <div class="col-md-2">
-      <button type="submit" class="btn btn-primary w-100">Add Bill</button>
+      <button type="submit" class="btn btn-primary w-100">
+        Add Bill
+      </button>
     </div>
   </form>
 
@@ -62,6 +67,7 @@
         <th>Owner</th>
         <th>Due Day</th>
         <th>Amount</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -72,9 +78,26 @@
         <td>{{ bill.owner }}</td>
         <td>{{ bill.due_day }}</td>
         <td>${{ "%.2f"|format(bill.amount) }}</td>
+        <td>
+          <form
+            action="{{ url_for('main.delete_bill', bill_id=bill.id) }}"
+            method="post"
+            style="display:inline-block;"
+          >
+            {% if csrf_token %}
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+            <button
+              type="submit"
+              class="btn btn-sm btn-danger"
+              onclick="return confirm('Delete this bill?');"
+            >
+              Delete
+            </button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 {% endblock %}
-
