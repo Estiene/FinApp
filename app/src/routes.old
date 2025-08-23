@@ -5,6 +5,8 @@ from flask import (
 from .models import db, Bill, Income
 from dateutil.relativedelta import relativedelta
 from datetime import date
+from .routes import bp as main_bp
+app.register_blueprint(main_bp)
 
 bp = Blueprint('main', __name__)
 
@@ -80,7 +82,7 @@ def report():
     periods = []
 
     for inc in incomes:
-        # your pay-period logic here…
+        # your pay-period logic here...
         # e.g., start/end = calculate_period(inc)
 
         total_due = 0

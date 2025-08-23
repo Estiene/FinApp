@@ -1,24 +1,30 @@
 # app/src/app.py
 
+import os
 from flask import Flask
 from flask_migrate import Migrate
 from .models import db
-from .routes import bp
-import os
+from .routes import bp as main_bp
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DATABASE_URL']
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+def create_app():
+    """Application factory: configure app, extensions, and blueprints."""
+    app = Flask(__name__)
 
-# Initialize SQLAlchemy
-db.init_app(app)
+    # 1. Configuration
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize Flask-Migrate
-migrate = Migrate(app, db)
+    # 2. Initialize extensions
+    db.init_app(app)
+    Migrate(app, db)
 
-# Register your blueprints
-app.register_blueprint(bp)
+    # 3. Register blueprints
+    app.register_blueprint(main_bp)
 
-# Immediately create tables when the app object is built
-#with app.app_context():
-#    db.create_all()
+    return app
+
+# Allow 'python app.py' to run the development server
+if __name__ == '__main__':
+    # Create the app and run in development mode
+    app = create_app()
+    app.run(host='0.0.0.0', port=5000, debug=True)
