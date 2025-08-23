@@ -24,6 +24,7 @@ services:
       - ./app:/usr/src/app
     environment:
       DATABASE_URL: postgresql://finapp:finapp@db:5432/finapp
+      SECRET_KEY: 09b895db084da526db4436053b1ec013a6dacd4fee56dccfce11434dcaaf65b9
       FLASK_APP: src.app:create_app
     command: flask run --host=0.0.0.0 --port=5000
     ports:

@@ -1,5 +1,3 @@
-# app/src/app.py
-
 import os
 from flask import Flask
 from flask_migrate import Migrate
@@ -14,6 +12,9 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    # Add this line to enable sessions and flash messages
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+
     # 2. Initialize extensions
     db.init_app(app)
     Migrate(app, db)
@@ -23,8 +24,6 @@ def create_app():
 
     return app
 
-# Allow 'python app.py' to run the development server
 if __name__ == '__main__':
-    # Create the app and run in development mode
     app = create_app()
     app.run(host='0.0.0.0', port=5000, debug=True)
