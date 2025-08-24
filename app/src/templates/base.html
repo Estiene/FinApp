@@ -22,6 +22,25 @@
       </div>
     </div>
   </nav>
+<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('main.index') }}">FinApp</a>
+    <ul class="navbar-nav">
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('main.bills') }}">Bills</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('main.incomes') }}">Incomes</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('main.accounts') }}">Accounts</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('main.report') }}">Report</a>
+      </li>
+    </ul>
+  </div>
+</nav>
 
   <div class="container">
     {% block content %}{% endblock %}

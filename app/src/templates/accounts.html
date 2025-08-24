@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Manage Accounts</h2>
+
+  <!-- Add Account Form -->
+  <form method="POST"
+        action="{{ url_for('main.add_account') }}"
+        class="row g-3 mb-4">
+    {% if csrf_token %}
+      <input type="hidden"
+             name="csrf_token"
+             value="{{ csrf_token() }}">
+    {% endif %}
+    <div class="col-md-8">
+      <input  type="text"
+              name="name"
+              class="form-control"
+              placeholder="New Account Name"
+              required>
+    </div>
+    <div class="col-md-4">
+      <button type="submit"
+              class="btn btn-primary w-100">
+        Add Account
+      </button>
+    </div>
+  </form>
+
+  <!-- Accounts Table -->
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for acct in accounts %}
+      <tr>
+        <td>{{ acct.id }}</td>
+        <td>{{ acct.name }}</td>
+        <td>
+          <form method="POST"
+                action="{{ url_for('main.delete_account',
+                                   account_id=acct.id) }}"
+                style="display:inline-block;">
+            {% if csrf_token %}
+              <input type="hidden"
+                     name="csrf_token"
+                     value="{{ csrf_token() }}">
+            {% endif %}
+            <button type="submit"
+                    class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete this account?');">
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

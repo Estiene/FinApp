@@ -8,6 +8,21 @@
     {% if csrf_token %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
+
+    <div class="col-md-2">
+      <div class="d-flex align-items-center">
+        <select name="account_id" class="form-select me-2" required>
+          <option value="">Account</option>
+          {% for acct in accounts %}
+            <option value="{{ acct.id }}">{{ acct.name }}</option>
+          {% endfor %}
+        </select>
+        <a href="{{ url_for('main.accounts') }}" class="btn btn-link p-0">
+          Manage
+        </a>
+      </div>
+    </div>
+
     <div class="col-md-3">
       <input
         type="text"
@@ -18,7 +33,7 @@
       />
     </div>
 
-    <div class="col-md-3">
+    <div class="col-md-2">
       <input
         type="text"
         name="owner"
@@ -28,12 +43,12 @@
       />
     </div>
 
-    <div class="col-md-2">
+    <div class="col-md-1">
       <input
         type="number"
         name="due_day"
         class="form-control"
-        placeholder="Day of Month"
+        placeholder="Day"
         min="1"
         max="31"
         required
@@ -63,6 +78,7 @@
     <thead>
       <tr>
         <th>ID</th>
+        <th>Account</th>
         <th>Name</th>
         <th>Owner</th>
         <th>Due Day</th>
@@ -74,6 +90,7 @@
       {% for bill in bills %}
       <tr>
         <td>{{ bill.id }}</td>
+        <td>{{ bill.account.name }}</td>
         <td>{{ bill.name }}</td>
         <td>{{ bill.owner }}</td>
         <td>{{ bill.due_day }}</td>

@@ -1,3 +1,4 @@
+{# templates/incomes.html #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -10,7 +11,21 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% endif %}
 
-  <div class="col-md-3">
+  <div class="col-md-2">
+    <div class="d-flex align-items-center">
+      <select name="account_id" class="form-select me-2" required>
+        <option value="">Account</option>
+        {% for acct in accounts %}
+          <option value="{{ acct.id }}">{{ acct.name }}</option>
+        {% endfor %}
+      </select>
+      <a href="{{ url_for('main.accounts') }}" class="btn btn-link p-0">
+        Manage
+      </a>
+    </div>
+  </div>
+
+  <div class="col-md-2">
     <input
       type="text"
       name="name"
@@ -31,7 +46,7 @@
     />
   </div>
 
-  <div class="col-md-3">
+  <div class="col-md-2">
     <select name="frequency" class="form-select" required>
       <option value="">Frequency</option>
       <option value="weekly">Weekly</option>
@@ -84,12 +99,12 @@
   </div>
 </form>
 
-
 <!-- Incomes Table -->
 <table class="table table-striped">
   <thead>
     <tr>
       <th>ID</th>
+      <th>Account</th>
       <th>Name</th>
       <th>Amount</th>
       <th>Frequency</th>
@@ -101,6 +116,7 @@
     {% for inc in incomes %}
     <tr>
       <td>{{ inc.id }}</td>
+      <td>{{ inc.account.name }}</td>
       <td>{{ inc.name }}</td>
       <td>${{ "%.2f"|format(inc.amount) }}</td>
       <td>{{ inc.frequency.replace('_',' ').title() }}</td>
@@ -134,7 +150,6 @@
   </tbody>
 </table>
 
-
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const freq     = document.querySelector('select[name="frequency"]');
@@ -148,9 +163,7 @@
       twiceDiv.style.display = isTwice ? 'block' : 'none';
 
       dateIn.required = !isTwice;
-      if (isTwice) {
-        dateIn.value = '';
-      }
+      if (isTwice) dateIn.value = '';
 
       twiceDiv.querySelectorAll('input').forEach(i => {
         i.required = isTwice;

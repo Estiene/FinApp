@@ -1,68 +1,82 @@
+{# templates/report.html #}
 {% extends "base.html" %}
 
 {% block content %}
   <h2>Daily Cash-Flow: {{ month }}/{{ year }}</h2>
 
-  <!-- Month Navigation and Starting Balance -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <a
-        href="{{ url_for('main.report',
-                         year=prev_year,
-                         month=prev_month,
-                         starting_balance=starting_balance) }}"
-        class="btn btn-outline-secondary"
-      >&laquo; Prev</a>
-      <a
-        href="{{ url_for('main.report',
-                         year=next_year,
-                         month=next_month,
-                         starting_balance=starting_balance) }}"
-        class="btn btn-outline-secondary ml-2"
-      >Next &raquo;</a>
+  <form method="get" class="row g-3 mb-4">
+    <div class="col-md-3">
+      <select name="account_id" class="form-select">
+        <option value="all" {% if selected_account=='all' %}selected{% endif %}>
+          All Accounts
+        </option>
+        {% for acct in accounts %}
+          <option value="{{ acct.id }}"
+            {% if selected_account|int == acct.id %}selected{% endif %}>
+            {{ acct.name }}
+          </option>
+        {% endfor %}
+      </select>
     </div>
 
-    <form method="get" class="form-inline">
-      <input type="hidden" name="year" value="{{ year }}" />
-      <input type="hidden" name="month" value="{{ month }}" />
-      <label for="starting_balance" class="mr-2">Starting Balance:</label>
+    <input type="hidden" name="year" value="{{ year }}">
+    <input type="hidden" name="month" value="{{ month }}">
+
+    <div class="col-md-3">
       <input
         type="text"
         name="starting_balance"
-        id="starting_balance"
-        class="form-control mr-2"
+        class="form-control"
+        placeholder="Starting Balance"
         value="{{ "%.2f"|format(starting_balance) }}"
       />
-      <button type="submit" class="btn btn-primary">Update</button>
-    </form>
+    </div>
+
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-primary w-100">Apply</button>
+    </div>
+  </form>
+
+
+  <div class="d-flex justify-content-between mb-3">
+    <a
+      href="?year={{ prev_year }}&month={{ prev_month }}&account_id={{ selected_account }}&starting_balance={{ starting_balance }}"
+      class="btn btn-outline-secondary"
+    >&laquo; Prev</a>
+
+    <a
+      href="?year={{ next_year }}&month={{ next_month }}&account_id={{ selected_account }}&starting_balance={{ starting_balance }}"
+      class="btn btn-outline-secondary"
+    >Next &raquo;</a>
   </div>
 
-  <table class="table table-striped">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Income</th>
-        <th>Bills</th>
-        <th>Net</th>
-        <th>Balance</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in days %}
-      <tr>
-        <td>{{ d.date }}</td>
-        <td>${{ "%.2f"|format(d.income) }}</td>
-        <td>${{ "%.2f"|format(d.bills) }}</td>
-        <td>
-          {% if d.net >= 0 %}
-            +${{ "%.2f"|format(d.net) }}
-          {% else %}
-            -${{ "%.2f"|format(-d.net) }}
-          {% endif %}
-        </td>
-        <td>${{ "%.2f"|format(d.balance) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+
+  {% for section in report_data %}
+    <h4>{{ section.account.name }}</h4>
+    <table class="table table-striped mb-4">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Income</th>
+          <th>Bills</th>
+          <th>Net</th>
+          <th>Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in section.days %}
+        <tr>
+          <td>{{ d.date }}</td>
+          <td>${{ "%.2f"|format(d.income) }}</td>
+          <td>${{ "%.2f"|format(d.bills) }}</td>
+          <td>
+            {% if d.net >= 0 %}+{% endif %}${{ "%.2f"|format(d.net|abs) }}
+          </td>
+          <td>${{ "%.2f"|format(d.balance) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endfor %}
+
 {% endblock %}
