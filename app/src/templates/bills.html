@@ -1,3 +1,4 @@
+<!-- src/templates/bills.html -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -97,7 +98,7 @@
         <td>${{ "%.2f"|format(bill.amount) }}</td>
         <td>
           <a
-            href="{{ url_for('main.edit_bill', bill_id=bill.id) }}"
+            href="{{ url_for('main.bills', bill_id=bill.id) }}"
             class="btn btn-sm btn-secondary me-1"
           >Edit</a>
 

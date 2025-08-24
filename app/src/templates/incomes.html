@@ -1,3 +1,4 @@
+<!-- src/templates/incomes.html -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -127,7 +128,7 @@
         </td>
         <td>
           <a
-            href="{{ url_for('main.edit_income', income_id=inc.id) }}"
+            href="{{ url_for('main.incomes', income_id=inc.id) }}"
             class="btn btn-sm btn-secondary me-1"
           >Edit</a>
 

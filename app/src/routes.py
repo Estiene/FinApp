@@ -1,6 +1,7 @@
 # src/routes.py
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import (Blueprint, render_template, request, redirect,
+                   url_for, flash, abort)
 from datetime import date
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
@@ -9,20 +10,128 @@ from .models import db, Account, Bill, Income
 
 bp = Blueprint('main', __name__)
 
+#
+# ––– HELPERS –––
+#
+
+def do_delete(model, obj_id, redirect_endpoint):
+    """Fetch + delete a single object, commit, flash, and redirect."""
+    obj = model.query.get_or_404(obj_id)
+    db.session.delete(obj)
+    db.session.commit()
+    flash(f"Deleted {model.__name__.lower()} '{getattr(obj, 'name', obj_id)}'.", 'success')
+    return redirect(url_for(redirect_endpoint))
+
+
+def parse_int_arg(name, default):
+    """Safely parse request.args[name] into int, fallback on default."""
+    try:
+        return int(request.args.get(name) or default)
+    except (ValueError, TypeError):
+        return default
+
+
+def parse_float_arg(name, default, label):
+    """
+    Safely parse request.args[name] into float.
+    On failure, flash, then fallback on default.
+    """
+    raw = request.args.get(name)
+    if not raw:
+        return default
+
+    try:
+        return float(raw)
+    except ValueError:
+        flash(f"Invalid {label} '{raw}', defaulting to {default}", 'danger')
+        return default
+
+
+def build_bill(form, existing=None):
+    """Fill a Bill instance (new or existing) from form data."""
+    bill = existing or Bill()
+    bill.name       = form['name']
+    bill.owner      = form['owner']
+    bill.amount     = form['amount']
+    bill.due_day    = int(form['due_day'])
+    bill.account_id = int(form['account_id'])
+    return bill
+
+
+def build_income(form, existing=None):
+    """Fill an Income instance (new or existing) from form data."""
+    inc = existing or Income()
+    inc.name       = form['name']
+    inc.amount     = form['amount']
+    inc.frequency  = form['frequency']
+    inc.account_id = int(form['account_id'])
+
+    if inc.frequency == 'twice_monthly':
+        inc.next_pay       = None
+        inc.day_of_month_1 = int(form['day1'])
+        inc.day_of_month_2 = int(form['day2'])
+    else:
+        try:
+            inc.next_pay = parser.parse(form.get('next_pay', '')).date()
+        except Exception as e:
+            flash(f"Invalid date: {e}", 'danger')
+            return None
+        inc.day_of_month_1 = None
+        inc.day_of_month_2 = None
+
+    return inc
+
+
+def income_dates_for_month(inc, first_day, last_day):
+    """
+    Given one Income and a date range, return the list of pay-dates
+    that fall within that month.
+    """
+    dates = []
+    freq = inc.frequency
+
+    if freq in ('weekly', 'biweekly'):
+        weeks = 1 if freq == 'weekly' else 2
+        delta = relativedelta(weeks=weeks)
+        seed  = inc.next_pay
+
+        while seed < first_day:
+            seed += delta
+        while seed <= last_day:
+            dates.append(seed)
+            seed += delta
+
+    elif freq == 'monthly':
+        try:
+            pay = date(first_day.year, first_day.month, inc.next_pay.day)
+        except ValueError:
+            return []
+        if first_day <= pay <= last_day:
+            dates.append(pay)
+
+    else:  # twice_monthly
+        for d in (inc.day_of_month_1, inc.day_of_month_2):
+            try:
+                pay = date(first_day.year, first_day.month, d)
+            except ValueError:
+                continue
+            if first_day <= pay <= last_day:
+                dates.append(pay)
+
+    return dates
+
+
+#
+# ––– ROUTES –––
+#
 
 @bp.route('/')
 def index():
-    """
-    Landing page for the app.
-    """
     return render_template('index.html')
 
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():
-    """
-    List and create accounts.
-    """
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         if not name:
@@ -34,132 +143,76 @@ def accounts():
             flash(f"Added account '{acct.name}'.", 'success')
         return redirect(url_for('main.accounts'))
 
-    accounts = Account.query.order_by(Account.name).all()
-    return render_template('accounts.html', accounts=accounts)
+    accts = Account.query.order_by(Account.name).all()
+    return render_template('accounts.html', accounts=accts)
 
 
 @bp.route('/accounts/<int:account_id>/delete', methods=['POST'])
 def delete_account(account_id):
-    """
-    Delete an account.
-    """
-    acct = Account.query.get_or_404(account_id)
-    db.session.delete(acct)
-    db.session.commit()
-    flash(f"Deleted account '{acct.name}'.", 'success')
-    return redirect(url_for('main.accounts'))
+    return do_delete(Account, account_id, 'main.accounts')
 
 
-@bp.route('/bills', methods=['GET', 'POST'])
-def bills():
-    """
-    List and create bills.
-    """
+@bp.route('/bills', defaults={'bill_id': None}, methods=['GET', 'POST'])
+@bp.route('/bills/<int:bill_id>', methods=['GET', 'POST'])
+def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
 
     if request.method == 'POST':
-        b = Bill(
-            name       = request.form['name'],
-            owner      = request.form['owner'],
-            amount     = request.form['amount'],
-            due_day    = int(request.form['due_day']),
-            account_id = int(request.form['account_id'])
-        )
+        existing = Bill.query.get(bill_id) if bill_id else None
+        b = build_bill(request.form, existing)
         db.session.add(b)
         db.session.commit()
-        flash(f"Added bill '{b.name}'.", 'success')
+        action = 'Updated' if bill_id else 'Added'
+        flash(f"{action} bill '{b.name}'.", 'success')
         return redirect(url_for('main.bills'))
 
-    bills = Bill.query.order_by(Bill.due_day).all()
-    return render_template('bills.html', bills=bills, accounts=accounts)
+    if bill_id:
+        bill = Bill.query.get_or_404(bill_id)
+        return render_template('edit_bill.html', bill=bill, accounts=accounts)
+
+    all_bills = Bill.query.order_by(Bill.due_day).all()
+    return render_template('bills.html', bills=all_bills, accounts=accounts)
 
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])
 def delete_bill(bill_id):
-    """
-    Delete a bill.
-    """
-    bill = Bill.query.get_or_404(bill_id)
-    db.session.delete(bill)
-    db.session.commit()
-    flash(f"Deleted bill '{bill.name}'.", 'success')
-    return redirect(url_for('main.bills'))
+    return do_delete(Bill, bill_id, 'main.bills')
 
 
-@bp.route('/bills/<int:bill_id>/edit', methods=['GET', 'POST'])
-def edit_bill(bill_id):
-    """
-    Edit an existing bill.
-    """
-    bill = Bill.query.get_or_404(bill_id)
+@bp.route('/incomes', defaults={'income_id': None}, methods=['GET', 'POST'])
+@bp.route('/incomes/<int:income_id>', methods=['GET', 'POST'])
+def incomes(income_id):
     accounts = Account.query.order_by(Account.name).all()
+    freqs    = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
 
     if request.method == 'POST':
-        bill.name       = request.form['name']
-        bill.owner      = request.form['owner']
-        bill.amount     = request.form['amount']
-        bill.due_day    = int(request.form['due_day'])
-        bill.account_id = int(request.form['account_id'])
-        db.session.commit()
-        flash(f"Updated bill '{bill.name}'.", 'success')
-        return redirect(url_for('main.bills'))
-
-    return render_template('edit_bill.html', bill=bill, accounts=accounts)
-
-
-@bp.route('/incomes', methods=['GET', 'POST'])
-def incomes():
-    """
-    List and create incomes.
-    """
-    accounts = Account.query.order_by(Account.name).all()
-
-    if request.method == 'POST':
-        name       = request.form['name']
-        amount     = request.form['amount']
-        frequency  = request.form['frequency']
-        account_id = int(request.form['account_id'])
-
-        if frequency == 'twice_monthly':
-            d1 = int(request.form['day1'])
-            d2 = int(request.form['day2'])
-            inc = Income(
-                name           = name,
-                amount         = amount,
-                frequency      = frequency,
-                next_pay       = None,
-                day_of_month_1 = d1,
-                day_of_month_2 = d2,
-                account_id     = account_id
-            )
-        else:
-            raw_date = request.form.get('next_pay', '')
-            try:
-                pay_date = parser.parse(raw_date).date()
-            except Exception as e:
-                flash(f"Invalid date: {e}", 'danger')
-                return redirect(url_for('main.incomes'))
-
-            inc = Income(
-                name           = name,
-                amount         = amount,
-                frequency      = frequency,
-                next_pay       = pay_date,
-                day_of_month_1 = None,
-                day_of_month_2 = None,
-                account_id     = account_id
-            )
+        existing = Income.query.get(income_id) if income_id else None
+        inc = build_income(request.form, existing)
+        if not inc:
+            # if build_income returned None, date parse failed
+            route = ('main.incomes' if not income_id
+                     else 'main.incomes')  # or 'main.edit_income'
+            return redirect(url_for(route))
 
         db.session.add(inc)
         db.session.commit()
-        flash(f"Added income '{inc.name}'.", 'success')
+        action = 'Updated' if income_id else 'Added'
+        flash(f"{action} income '{inc.name}'.", 'success')
         return redirect(url_for('main.incomes'))
 
-    incomes = Income.query.order_by(Income.next_pay).all()
-    freqs   = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
+    if income_id:
+        inc = Income.query.get_or_404(income_id)
+        return render_template(
+            'edit_income.html',
+            income   = inc,
+            freqs    = freqs,
+            accounts = accounts
+        )
+
+    all_incomes = Income.query.order_by(Income.next_pay).all()
     return render_template(
         'incomes.html',
-        incomes  = incomes,
+        incomes  = all_incomes,
         freqs    = freqs,
         accounts = accounts
     )
@@ -167,158 +220,58 @@ def incomes():
 
 @bp.route('/incomes/<int:income_id>/delete', methods=['POST'])
 def delete_income(income_id):
-    """
-    Delete an income.
-    """
-    inc = Income.query.get_or_404(income_id)
-    db.session.delete(inc)
-    db.session.commit()
-    flash(f"Deleted income '{inc.name}'.", 'success')
-    return redirect(url_for('main.incomes'))
-
-
-@bp.route('/incomes/<int:income_id>/edit', methods=['GET', 'POST'])
-def edit_income(income_id):
-    """
-    Edit an existing income.
-    """
-    income   = Income.query.get_or_404(income_id)
-    accounts = Account.query.order_by(Account.name).all()
-    freqs    = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
-
-    if request.method == 'POST':
-        income.name       = request.form['name']
-        income.amount     = request.form['amount']
-        income.frequency  = request.form['frequency']
-        income.account_id = int(request.form['account_id'])
-
-        if income.frequency == 'twice_monthly':
-            income.day_of_month_1 = int(request.form['day1'])
-            income.day_of_month_2 = int(request.form['day2'])
-            income.next_pay       = None
-        else:
-            raw_date = request.form.get('next_pay', '')
-            try:
-                income.next_pay = parser.parse(raw_date).date()
-            except Exception as e:
-                flash(f"Invalid date: {e}", 'danger')
-                return redirect(url_for('main.edit_income', income_id=income.id))
-
-            income.day_of_month_1 = None
-            income.day_of_month_2 = None
-
-        db.session.commit()
-        flash(f"Updated income '{income.name}'.", 'success')
-        return redirect(url_for('main.incomes'))
-
-    return render_template(
-        'edit_income.html',
-        income   = income,
-        freqs    = freqs,
-        accounts = accounts
-    )
+    return do_delete(Income, income_id, 'main.incomes')
 
 
 @bp.route('/report')
 def report():
-    """
-    Generate and display the monthly cash-flow report.
-    """
-    today     = date.today()
+    today = date.today()
 
-    # Safely parse year and month; fall back to today if empty or invalid
-    year  = request.args.get('year',  default=today.year,  type=int)
-    month = request.args.get('month', default=today.month, type=int)
+    # parse & default year/month
+    year  = parse_int_arg('year',  today.year)
+    month = parse_int_arg('month', today.month)
 
-    # Account filter: 'all' or specific ID
-    acct_id_raw = request.args.get('account_id')
-    acct_id     = acct_id_raw if acct_id_raw not in (None, '') else 'all'
+    # account filter
+    acct_id = request.args.get('account_id') or 'all'
 
-    # Starting balance: default '0', then float-parse with fallback
-    raw_start = request.args.get('starting_balance') or '0'
-    try:
-        starting_balance = float(raw_start)
-    except ValueError:
-        flash(f"Invalid starting balance '{raw_start}', defaulting to 0", 'danger')
-        starting_balance = 0.0
+    # starting_balance
+    sb = parse_float_arg('starting_balance', 0.0, 'starting balance')
 
-    # Determine report range
+    # range of days for this month
     first_day  = date(year, month, 1)
-    next_month = first_day + relativedelta(months=1)
-    last_day   = next_month - relativedelta(days=1)
+    last_day   = first_day + relativedelta(months=1) - relativedelta(days=1)
 
+    # which accounts to report on
     accounts = Account.query.order_by(Account.name).all()
     if acct_id == 'all':
         target_accounts = accounts
     else:
         target_accounts = [Account.query.get_or_404(int(acct_id))]
 
-    def income_dates_for_month(inc):
-        dates = []
-        if inc.frequency == 'weekly':
-            delta = relativedelta(weeks=1)
-            seed  = inc.next_pay
-            while seed < first_day:
-                seed += delta
-            while seed <= last_day:
-                dates.append(seed)
-                seed += delta
-
-        elif inc.frequency == 'biweekly':
-            delta = relativedelta(weeks=2)
-            seed  = inc.next_pay
-            while seed < first_day:
-                seed += delta
-            while seed <= last_day:
-                dates.append(seed)
-                seed += delta
-
-        elif inc.frequency == 'monthly':
-            day = inc.next_pay.day
-            try:
-                pay = date(year, month, day)
-            except ValueError:
-                return []
-            if first_day <= pay <= last_day:
-                dates.append(pay)
-
-        elif inc.frequency == 'twice_monthly':
-            for d in (inc.day_of_month_1, inc.day_of_month_2):
-                try:
-                    pay = date(year, month, d)
-                except ValueError:
-                    continue
-                if first_day <= pay <= last_day:
-                    dates.append(pay)
-
-        return dates
-
     report_data = []
     for acct in target_accounts:
+        # build per-day income & bill maps
         income_map = {}
         for inc in acct.incomes:
-            for pd in income_dates_for_month(inc):
-                income_map.setdefault(pd, 0.0)
-                income_map[pd] += float(inc.amount)
+            for dt in income_dates_for_month(inc, first_day, last_day):
+                income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
 
         bill_map = {}
-        for b in acct.bills:
+        for bill in acct.bills:
             try:
-                due = date(year, month, b.due_day)
+                due = date(year, month, bill.due_day)
             except ValueError:
                 continue
             if first_day <= due <= last_day:
-                bill_map.setdefault(due, 0.0)
-                bill_map[due] += float(b.amount)
+                bill_map[due] = bill_map.get(due, 0.0) + float(bill.amount)
 
-        days = []
-        bal  = starting_balance
+        # roll forward per-day balances
+        days, bal = [], sb
         total_days = (last_day - first_day).days + 1
-
         for i in range(total_days):
             current = first_day + relativedelta(days=i)
             inc_amt  = income_map.get(current, 0.0)
-            bill_amt = bill_map.get(current, 0.0)
+            bill_amt = bill_map.get(current,  0.0)
             net      = inc_amt - bill_amt
             bal     += net
 
@@ -330,20 +283,16 @@ def report():
                 'balance': round(bal, 2)
             })
 
-        report_data.append({
-            'account': acct,
-            'days':    days
-        })
+        report_data.append({'account': acct, 'days': days})
 
     prev_dt = first_day - relativedelta(months=1)
     next_dt = first_day + relativedelta(months=1)
 
-    return render_template(
-        'report.html',
+    return render_template('report.html',
         report_data      = report_data,
         accounts         = accounts,
         selected_account = acct_id,
-        starting_balance = starting_balance,
+        starting_balance = sb,
         year             = year,
         month            = month,
         prev_year        = prev_dt.year,
@@ -355,7 +304,4 @@ def report():
 
 @bp.route('/manage')
 def manage():
-    """
-    Management dashboard for the app.
-    """
     return render_template('manage.html')
