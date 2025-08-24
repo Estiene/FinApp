@@ -74,6 +74,24 @@ def delete_bill(bill_id):
     return redirect(url_for('main.bills'))
 
 
+@bp.route('/bills/<int:bill_id>/edit', methods=['GET', 'POST'])
+def edit_bill(bill_id):
+    bill = Bill.query.get_or_404(bill_id)
+    accounts = Account.query.order_by(Account.name).all()
+
+    if request.method == 'POST':
+        bill.name       = request.form['name']
+        bill.owner      = request.form['owner']
+        bill.amount     = request.form['amount']
+        bill.due_day    = int(request.form['due_day'])
+        bill.account_id = int(request.form['account_id'])
+        db.session.commit()
+        flash(f"Updated bill '{bill.name}'.", 'success')
+        return redirect(url_for('main.bills'))
+
+    return render_template('edit_bill.html', bill=bill, accounts=accounts)
+
+
 @bp.route('/incomes', methods=['GET', 'POST'])
 def incomes():
     accounts = Account.query.order_by(Account.name).all()
@@ -88,13 +106,13 @@ def incomes():
             d1 = int(request.form['day1'])
             d2 = int(request.form['day2'])
             inc = Income(
-                name            = name,
-                amount          = amount,
-                frequency       = frequency,
-                next_pay        = None,
-                day_of_month_1  = d1,
-                day_of_month_2  = d2,
-                account_id      = account_id
+                name           = name,
+                amount         = amount,
+                frequency      = frequency,
+                next_pay       = None,
+                day_of_month_1 = d1,
+                day_of_month_2 = d2,
+                account_id     = account_id
             )
         else:
             raw_date = request.form.get('next_pay', '')
@@ -105,13 +123,13 @@ def incomes():
                 return redirect(url_for('main.incomes'))
 
             inc = Income(
-                name            = name,
-                amount          = amount,
-                frequency       = frequency,
-                next_pay        = pay_date,
-                day_of_month_1  = None,
-                day_of_month_2  = None,
-                account_id      = account_id
+                name           = name,
+                amount         = amount,
+                frequency      = frequency,
+                next_pay       = pay_date,
+                day_of_month_1 = None,
+                day_of_month_2 = None,
+                account_id     = account_id
             )
 
         db.session.add(inc)
@@ -123,9 +141,9 @@ def incomes():
     freqs   = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
     return render_template(
         'incomes.html',
-        incomes=incomes,
-        freqs=freqs,
-        accounts=accounts
+        incomes = incomes,
+        freqs   = freqs,
+        accounts = accounts
     )
 
 
@@ -136,6 +154,45 @@ def delete_income(income_id):
     db.session.commit()
     flash(f"Deleted income '{inc.name}'.", 'success')
     return redirect(url_for('main.incomes'))
+
+
+@bp.route('/incomes/<int:income_id>/edit', methods=['GET', 'POST'])
+def edit_income(income_id):
+    income   = Income.query.get_or_404(income_id)
+    accounts = Account.query.order_by(Account.name).all()
+    freqs    = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
+
+    if request.method == 'POST':
+        income.name       = request.form['name']
+        income.amount     = request.form['amount']
+        income.frequency  = request.form['frequency']
+        income.account_id = int(request.form['account_id'])
+
+        if income.frequency == 'twice_monthly':
+            income.day_of_month_1 = int(request.form['day1'])
+            income.day_of_month_2 = int(request.form['day2'])
+            income.next_pay       = None
+        else:
+            raw_date = request.form.get('next_pay', '')
+            try:
+                income.next_pay = parser.parse(raw_date).date()
+            except Exception as e:
+                flash(f"Invalid date: {e}", 'danger')
+                return redirect(url_for('main.edit_income', income_id=income.id))
+
+            income.day_of_month_1 = None
+            income.day_of_month_2 = None
+
+        db.session.commit()
+        flash(f"Updated income '{income.name}'.", 'success')
+        return redirect(url_for('main.incomes'))
+
+    return render_template(
+        'edit_income.html',
+        income   = income,
+        freqs    = freqs,
+        accounts = accounts
+    )
 
 
 @bp.route('/report')
@@ -207,14 +264,12 @@ def report():
 
     report_data = []
     for acct in target_accounts:
-        # build income map for this account
         income_map = {}
         for inc in acct.incomes:
             for pd in income_dates_for_month(inc):
                 income_map.setdefault(pd, 0.0)
                 income_map[pd] += float(inc.amount)
 
-        # build bill map for this account
         bill_map = {}
         for b in acct.bills:
             try:
@@ -225,7 +280,6 @@ def report():
                 bill_map.setdefault(due, 0.0)
                 bill_map[due] += float(b.amount)
 
-        # assemble daily rows
         days = []
         bal  = starting_balance
         total_days = (last_day - first_day).days + 1

@@ -5,23 +5,24 @@
 
   <!-- Add Account Form -->
   <form method="POST"
-        action="{{ url_for('main.add_account') }}"
+        action="{{ url_for('main.accounts') }}"
         class="row g-3 mb-4">
     {% if csrf_token %}
-      <input type="hidden"
-             name="csrf_token"
-             value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
+
     <div class="col-md-8">
-      <input  type="text"
-              name="name"
-              class="form-control"
-              placeholder="New Account Name"
-              required>
+      <input
+        type="text"
+        name="name"
+        class="form-control"
+        placeholder="New Account Name"
+        required
+      />
     </div>
+
     <div class="col-md-4">
-      <button type="submit"
-              class="btn btn-primary w-100">
+      <button type="submit" class="btn btn-primary w-100">
         Add Account
       </button>
     </div>
@@ -43,17 +44,15 @@
         <td>{{ acct.name }}</td>
         <td>
           <form method="POST"
-                action="{{ url_for('main.delete_account',
-                                   account_id=acct.id) }}"
+                action="{{ url_for('main.delete_account', account_id=acct.id) }}"
                 style="display:inline-block;">
             {% if csrf_token %}
-              <input type="hidden"
-                     name="csrf_token"
-                     value="{{ csrf_token() }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% endif %}
-            <button type="submit"
-                    class="btn btn-sm btn-danger"
-                    onclick="return confirm('Delete this account?');">
+            <button
+              type="submit"
+              class="btn btn-sm btn-danger"
+              onclick="return confirm('Delete this account?');">
               Delete
             </button>
           </form>
