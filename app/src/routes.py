@@ -96,59 +96,120 @@ def delete_income(income_id):
 
 @bp.route('/report')
 def report():
+    # 1. Read year/month from querystring (default = today)
+    today = date.today()
+    year  = int(request.args.get('year', today.year))
+    month = int(request.args.get('month', today.month))
+
+    # 2. Read starting balance from querystring
+    raw_start = request.args.get('starting_balance', '0')
+    try:
+        starting_balance = float(raw_start)
+    except ValueError:
+        flash(f"Invalid starting balance '{raw_start}', defaulting to 0", 'danger')
+        starting_balance = 0.0
+
+    # 3. Build the month’s date range
+    first_day = date(year, month, 1)
+    next_month = first_day + relativedelta(months=1)
+    last_day = next_month - relativedelta(days=1)
+    num_days = (last_day - first_day).days + 1
+
+    # 4. Preload bills and incomes
     bills   = Bill.query.all()
-    periods = []
-    today   = date.today()
+    incomes = Income.query.all()
 
-    for inc in Income.query.all():
-        # Determine semimonthly days tuple if needed
-        semis = None
-        if inc.frequency == 'twice_monthly':
-            semis = (inc.day_of_month_1, inc.day_of_month_2)
-
-            # Pick a non-None seed date for semimonthly
-            if inc.next_pay:
-                seed = inc.next_pay
-            else:
-                d1, d2 = semis
-                if d1 >= today.day:
-                    seed = date(today.year, today.month, d1)
-                elif d2 >= today.day:
-                    seed = date(today.year, today.month, d2)
-                else:
-                    nxt = today + relativedelta(months=1)
-                    seed = date(nxt.year, nxt.month, d1)
-        else:
-            # weekly, biweekly, monthly all require next_pay
+    # 5. Helper: for each income, find pay dates in this month
+    def income_dates_for_month(inc):
+        dates = []
+        if inc.frequency == 'weekly':
+            # step = 7 days
+            delta = relativedelta(weeks=1)
+            # seed = next_pay or first occurrence >= first_day
             seed = inc.next_pay
+            while seed < first_day:
+                seed += delta
+            while seed <= last_day:
+                dates.append(seed)
+                seed += delta
 
-        # Generate pay-period spans using that seed
-        spans = generate_pay_periods(
-            first_pay_date   = seed,
-            frequency        = inc.frequency,
-            semimonthly_days = semis,
-            horizon_months   = 12
-        )
+        elif inc.frequency == 'biweekly':
+            delta = relativedelta(weeks=2)
+            seed = inc.next_pay
+            while seed < first_day:
+                seed += delta
+            while seed <= last_day:
+                dates.append(seed)
+                seed += delta
 
-        # Sum bills due in each span
-        for start, end in spans:
-            total_due = 0
-            for b in bills:
+        elif inc.frequency == 'monthly':
+            day = inc.next_pay.day
+            try:
+                pay = date(year, month, day)
+            except ValueError:
+                return []
+            if first_day <= pay <= last_day:
+                dates.append(pay)
+
+        elif inc.frequency == 'twice_monthly':
+            d1, d2 = inc.day_of_month_1, inc.day_of_month_2
+            for d in (d1, d2):
                 try:
-                    due_dt = date(start.year, start.month, b.due_day)
+                    pay = date(year, month, d)
                 except ValueError:
                     continue
-                if start <= due_dt <= end:
-                    total_due += float(b.amount)
+                if first_day <= pay <= last_day:
+                    dates.append(pay)
 
-            periods.append({
-                'start':     start,
-                'end':       end,
-                'income':    float(inc.amount),
-                'bills_due': total_due,
-                'net':       float(inc.amount) - total_due
-            })
+        return dates
 
-    # Sort all periods by their start date
-    periods.sort(key=lambda p: p['start'])
-    return render_template('report.html', periods=periods)
+    # 6. Build daily rows
+    days = []
+    # Pre-calc a mapping of date -> total income
+    income_map = {}
+    for inc in incomes:
+        for pd in income_dates_for_month(inc):
+            income_map.setdefault(pd, 0.0)
+            income_map[pd] += float(inc.amount)
+
+    # Pre-calc a mapping of date -> total bills
+    bill_map = {}
+    for b in bills:
+        day = b.due_day
+        try:
+            due = date(year, month, day)
+        except ValueError:
+            continue
+        if first_day <= due <= last_day:
+            bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+
+    # Iterate each day in the month
+    balance = starting_balance
+    for i in range(num_days):
+        current = first_day + relativedelta(days=i)
+        inc_amt  = income_map.get(current, 0.0)
+        bill_amt = bill_map.get(current, 0.0)
+        net      = inc_amt - bill_amt
+        balance += net
+
+        days.append({
+            'date':    current,
+            'income':  inc_amt,
+            'bills':   bill_amt,
+            'net':     net,
+            'balance': balance
+        })
+
+    # 7. Prev/Next month links
+    prev_month_dt = first_day - relativedelta(months=1)
+    next_month_dt = first_day + relativedelta(months=1)
+
+    return render_template('report.html',
+        days=days,
+        starting_balance=round(starting_balance, 2),
+        year=year, month=month,
+        prev_year=prev_month_dt.year,
+        prev_month=prev_month_dt.month,
+        next_year=next_month_dt.year,
+        next_month=next_month_dt.month,
+    )

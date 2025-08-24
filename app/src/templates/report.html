@@ -1,29 +1,68 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h2>Pay Period Report</h2>
+  <h2>Daily Cash-Flow: {{ month }}/{{ year }}</h2>
+
+  <!-- Month Navigation and Starting Balance -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <a
+        href="{{ url_for('main.report',
+                         year=prev_year,
+                         month=prev_month,
+                         starting_balance=starting_balance) }}"
+        class="btn btn-outline-secondary"
+      >&laquo; Prev</a>
+      <a
+        href="{{ url_for('main.report',
+                         year=next_year,
+                         month=next_month,
+                         starting_balance=starting_balance) }}"
+        class="btn btn-outline-secondary ml-2"
+      >Next &raquo;</a>
+    </div>
+
+    <form method="get" class="form-inline">
+      <input type="hidden" name="year" value="{{ year }}" />
+      <input type="hidden" name="month" value="{{ month }}" />
+      <label for="starting_balance" class="mr-2">Starting Balance:</label>
+      <input
+        type="text"
+        name="starting_balance"
+        id="starting_balance"
+        class="form-control mr-2"
+        value="{{ "%.2f"|format(starting_balance) }}"
+      />
+      <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+  </div>
 
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>Start</th>
-        <th>End</th>
+        <th>Date</th>
         <th>Income</th>
-        <th>Total Bills</th>
+        <th>Bills</th>
         <th>Net</th>
+        <th>Balance</th>
       </tr>
     </thead>
     <tbody>
-      {% for p in periods %}
+      {% for d in days %}
       <tr>
-        <td>{{ p.start }}</td>
-        <td>{{ p.end }}</td>
-        <td>${{ "%.2f"|format(p.income) }}</td>
-        <td>${{ "%.2f"|format(p.bills_due) }}</td>
-        <td>${{ "%.2f"|format(p.net) }}</td>
+        <td>{{ d.date }}</td>
+        <td>${{ "%.2f"|format(d.income) }}</td>
+        <td>${{ "%.2f"|format(d.bills) }}</td>
+        <td>
+          {% if d.net >= 0 %}
+            +${{ "%.2f"|format(d.net) }}
+          {% else %}
+            -${{ "%.2f"|format(-d.net) }}
+          {% endif %}
+        </td>
+        <td>${{ "%.2f"|format(d.balance) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 {% endblock %}
-
