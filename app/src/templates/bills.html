@@ -10,10 +10,11 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
 
-    <div class="col-md-2">
+    <!-- Account selector now col-md-3 -->
+    <div class="col-md-3">
       <div class="d-flex align-items-center">
         <select name="account_id" class="form-select me-2" required>
-          <option value="">Account</option>
+          <option value="">Select an Account</option>
           {% for acct in accounts %}
             <option value="{{ acct.id }}">{{ acct.name }}</option>
           {% endfor %}
@@ -24,7 +25,8 @@
       </div>
     </div>
 
-    <div class="col-md-3">
+    <!-- Bill Name shrunk to col-md-2 -->
+    <div class="col-md-2">
       <input
         type="text"
         name="name"
