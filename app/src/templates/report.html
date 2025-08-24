@@ -69,10 +69,16 @@
             <td>{{ d.date }}</td>
             <td>${{ "%.2f"|format(d.income) }}</td>
             <td>${{ "%.2f"|format(d.bills) }}</td>
-            <td class="{% if d.net < 0 %}text-danger{% endif %}">
+
+            {# Net: red if negative, green if positive #}
+            <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
               {% if d.net >= 0 %}+{% endif %}${{ "%.2f"|format(d.net|abs) }}
             </td>
-            <td>${{ "%.2f"|format(d.balance) }}</td>
+
+            {# Balance: red if negative, green if positive #}
+            <td class="{% if d.balance < 0 %}text-danger{% elif d.balance > 0 %}text-success{% endif %}">
+              ${{ "%.2f"|format(d.balance) }}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

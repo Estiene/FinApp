@@ -1,9 +1,6 @@
 # src/routes.py
 
-from flask import (
-    Blueprint, render_template, request,
-    redirect, url_for, flash
-)
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from datetime import date
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
@@ -15,11 +12,17 @@ bp = Blueprint('main', __name__)
 
 @bp.route('/')
 def index():
+    """
+    Landing page for the app.
+    """
     return render_template('index.html')
 
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():
+    """
+    List and create accounts.
+    """
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         if not name:
@@ -37,6 +40,9 @@ def accounts():
 
 @bp.route('/accounts/<int:account_id>/delete', methods=['POST'])
 def delete_account(account_id):
+    """
+    Delete an account.
+    """
     acct = Account.query.get_or_404(account_id)
     db.session.delete(acct)
     db.session.commit()
@@ -46,6 +52,9 @@ def delete_account(account_id):
 
 @bp.route('/bills', methods=['GET', 'POST'])
 def bills():
+    """
+    List and create bills.
+    """
     accounts = Account.query.order_by(Account.name).all()
 
     if request.method == 'POST':
@@ -67,6 +76,9 @@ def bills():
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])
 def delete_bill(bill_id):
+    """
+    Delete a bill.
+    """
     bill = Bill.query.get_or_404(bill_id)
     db.session.delete(bill)
     db.session.commit()
@@ -76,6 +88,9 @@ def delete_bill(bill_id):
 
 @bp.route('/bills/<int:bill_id>/edit', methods=['GET', 'POST'])
 def edit_bill(bill_id):
+    """
+    Edit an existing bill.
+    """
     bill = Bill.query.get_or_404(bill_id)
     accounts = Account.query.order_by(Account.name).all()
 
@@ -94,6 +109,9 @@ def edit_bill(bill_id):
 
 @bp.route('/incomes', methods=['GET', 'POST'])
 def incomes():
+    """
+    List and create incomes.
+    """
     accounts = Account.query.order_by(Account.name).all()
 
     if request.method == 'POST':
@@ -141,14 +159,17 @@ def incomes():
     freqs   = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
     return render_template(
         'incomes.html',
-        incomes = incomes,
-        freqs   = freqs,
+        incomes  = incomes,
+        freqs    = freqs,
         accounts = accounts
     )
 
 
 @bp.route('/incomes/<int:income_id>/delete', methods=['POST'])
 def delete_income(income_id):
+    """
+    Delete an income.
+    """
     inc = Income.query.get_or_404(income_id)
     db.session.delete(inc)
     db.session.commit()
@@ -158,6 +179,9 @@ def delete_income(income_id):
 
 @bp.route('/incomes/<int:income_id>/edit', methods=['GET', 'POST'])
 def edit_income(income_id):
+    """
+    Edit an existing income.
+    """
     income   = Income.query.get_or_404(income_id)
     accounts = Account.query.order_by(Account.name).all()
     freqs    = ['weekly', 'biweekly', 'monthly', 'twice_monthly']
@@ -197,21 +221,28 @@ def edit_income(income_id):
 
 @bp.route('/report')
 def report():
+    """
+    Generate and display the monthly cash-flow report.
+    """
     today     = date.today()
-    year      = int(request.args.get('year', today.year))
-    month     = int(request.args.get('month', today.month))
-    acct_id   = request.args.get('account_id', 'all')
-    raw_start = request.args.get('starting_balance', '0')
 
+    # Safely parse year and month; fall back to today if empty or invalid
+    year  = request.args.get('year',  default=today.year,  type=int)
+    month = request.args.get('month', default=today.month, type=int)
+
+    # Account filter: 'all' or specific ID
+    acct_id_raw = request.args.get('account_id')
+    acct_id     = acct_id_raw if acct_id_raw not in (None, '') else 'all'
+
+    # Starting balance: default '0', then float-parse with fallback
+    raw_start = request.args.get('starting_balance') or '0'
     try:
         starting_balance = float(raw_start)
     except ValueError:
-        flash(
-            f"Invalid starting balance '{raw_start}', defaulting to 0",
-            'danger'
-        )
+        flash(f"Invalid starting balance '{raw_start}', defaulting to 0", 'danger')
         starting_balance = 0.0
 
+    # Determine report range
     first_day  = date(year, month, 1)
     next_month = first_day + relativedelta(months=1)
     last_day   = next_month - relativedelta(days=1)
@@ -286,10 +317,10 @@ def report():
 
         for i in range(total_days):
             current = first_day + relativedelta(days=i)
-            inc_amt = income_map.get(current, 0.0)
-            bill_amt= bill_map.get(current, 0.0)
-            net     = inc_amt - bill_amt
-            bal    += net
+            inc_amt  = income_map.get(current, 0.0)
+            bill_amt = bill_map.get(current, 0.0)
+            net      = inc_amt - bill_amt
+            bal     += net
 
             days.append({
                 'date':    current,
@@ -320,3 +351,11 @@ def report():
         next_year        = next_dt.year,
         next_month       = next_dt.month
     )
+
+
+@bp.route('/manage')
+def manage():
+    """
+    Management dashboard for the app.
+    """
+    return render_template('manage.html')
