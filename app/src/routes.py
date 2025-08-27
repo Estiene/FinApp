@@ -7,6 +7,7 @@ from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income
+from calendar import monthrange
 
 bp = Blueprint('main', __name__)
 
@@ -226,8 +227,8 @@ def delete_income(income_id):
 @bp.route('/report')
 def report():
     """
-    Generate and display a cash‐flow report for every account,
-    each with its own starting balance, and from a customizable start date
+    Generate and display a cash-flow report for every account,
+    each with its own starting balance, from an optional start date
     through the end of the selected month.
     """
     # 1. Parse year/month (defaults to today)
@@ -258,11 +259,12 @@ def report():
             sb = 0.0
         starting_balances[acct.id] = sb
 
-    # 4. Compute month’s end
+    # 4. Compute month’s first day, last day, and last valid day-of-month
     first_of_month = date(year, month, 1)
-    last_day       = first_of_month + relativedelta(months=1) - relativedelta(days=1)
+    _, last_dom   = monthrange(year, month)
+    last_day      = first_of_month + relativedelta(months=1) - relativedelta(days=1)
 
-    # 5. Helper: all pay‐dates of one Income within [start_date, last_day]
+    # 5. Helper: all pay-dates of one Income within [start_date, last_day]
     def income_dates_for_month(inc):
         dates, freq = [], inc.frequency
 
@@ -305,13 +307,11 @@ def report():
             for dt in income_dates_for_month(inc):
                 income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
 
-        # map each date → total bills
+        # map each date → total bills, capping due_day to last_dom
         bill_map = {}
         for b in acct.bills:
-            try:
-                due = date(year, month, b.due_day)
-            except ValueError:
-                continue
+            dom = min(b.due_day, last_dom)
+            due = date(year, month, dom)
             if start_date <= due <= last_day:
                 bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
 
@@ -339,7 +339,7 @@ def report():
             'days':             days
         })
 
-    # 7. Prev/Next month for header navigation (preserve start_date)
+    # 7. Prev/Next month for header navigation
     prev_dt = first_of_month - relativedelta(months=1)
     next_dt = first_of_month + relativedelta(months=1)
 
@@ -356,6 +356,7 @@ def report():
         next_year          = next_dt.year,
         next_month         = next_dt.month,
     )
+
 
 
 
