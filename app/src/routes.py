@@ -225,53 +225,90 @@ def delete_income(income_id):
 
 @bp.route('/report')
 def report():
+    """
+    Generate and display a monthly cash‐flow report for every account,
+    each with its own starting balance.
+    """
     today = date.today()
+    year  = request.args.get('year',  default=today.year,  type=int)
+    month = request.args.get('month', default=today.month, type=int)
 
-    # parse & default year/month
-    year  = parse_int_arg('year',  today.year)
-    month = parse_int_arg('month', today.month)
+    # load all accounts up front
+    accounts = Account.query.order_by(Account.name).all()
 
-    # account filter
-    acct_id = request.args.get('account_id') or 'all'
+    # collect per-account starting balances from query params
+    starting_balances = {}
+    for acct in accounts:
+        raw = request.args.get(f'starting_balance_{acct.id}', '0')
+        try:
+            sb = float(raw)
+        except ValueError:
+            flash(f"Invalid start for '{acct.name}': {raw}. Using 0.", 'danger')
+            sb = 0.0
+        starting_balances[acct.id] = sb
 
-    # starting_balance
-    sb = parse_float_arg('starting_balance', 0.0, 'starting balance')
-
-    # range of days for this month
+    # set up date range
     first_day  = date(year, month, 1)
     last_day   = first_day + relativedelta(months=1) - relativedelta(days=1)
 
-    # which accounts to report on
-    accounts = Account.query.order_by(Account.name).all()
-    if acct_id == 'all':
-        target_accounts = accounts
-    else:
-        target_accounts = [Account.query.get_or_404(int(acct_id))]
+    # helper to compute all pay dates for one income
+    def income_dates_for_month(inc):
+        dates = []
+        freq = inc.frequency
+        if freq in ('weekly', 'biweekly'):
+            step = relativedelta(weeks=(1 if freq=='weekly' else 2))
+            seed = inc.next_pay
+            while seed < first_day:
+                seed += step
+            while seed <= last_day:
+                dates.append(seed)
+                seed += step
 
+        elif freq == 'monthly':
+            try:
+                pay = date(year, month, inc.next_pay.day)
+            except ValueError:
+                return []
+            if first_day <= pay <= last_day:
+                dates.append(pay)
+
+        else:  # twice_monthly
+            for d in (inc.day_of_month_1, inc.day_of_month_2):
+                try:
+                    pay = date(year, month, d)
+                except ValueError:
+                    continue
+                if first_day <= pay <= last_day:
+                    dates.append(pay)
+
+        return dates
+
+    # build report_data per account
     report_data = []
-    for acct in target_accounts:
-        # build per-day income & bill maps
+    for acct in accounts:
+        sb = starting_balances[acct.id]
+        # aggregate daily incomes and bills
         income_map = {}
         for inc in acct.incomes:
-            for dt in income_dates_for_month(inc, first_day, last_day):
-                income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
+            for d in income_dates_for_month(inc):
+                income_map[d] = income_map.get(d, 0.0) + float(inc.amount)
 
         bill_map = {}
-        for bill in acct.bills:
+        for b in acct.bills:
             try:
-                due = date(year, month, bill.due_day)
+                due = date(year, month, b.due_day)
             except ValueError:
                 continue
             if first_day <= due <= last_day:
-                bill_map[due] = bill_map.get(due, 0.0) + float(bill.amount)
+                bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
 
-        # roll forward per-day balances
+        # walk each day and compute running balance
         days, bal = [], sb
         total_days = (last_day - first_day).days + 1
         for i in range(total_days):
             current = first_day + relativedelta(days=i)
             inc_amt  = income_map.get(current, 0.0)
-            bill_amt = bill_map.get(current,  0.0)
+            bill_amt = bill_map.get(current, 0.0)
             net      = inc_amt - bill_amt
             bal     += net
 
@@ -283,23 +320,29 @@ def report():
                 'balance': round(bal, 2)
             })
 
-        report_data.append({'account': acct, 'days': days})
+        report_data.append({
+            'account':          acct,
+            'starting_balance': sb,
+            'days':             days
+        })
 
+    # prev/next month for nav
     prev_dt = first_day - relativedelta(months=1)
     next_dt = first_day + relativedelta(months=1)
 
-    return render_template('report.html',
-        report_data      = report_data,
-        accounts         = accounts,
-        selected_account = acct_id,
-        starting_balance = sb,
-        year             = year,
-        month            = month,
-        prev_year        = prev_dt.year,
-        prev_month       = prev_dt.month,
-        next_year        = next_dt.year,
-        next_month       = next_dt.month
+    return render_template(
+        'report.html',
+        year               = year,
+        month              = month,
+        accounts           = accounts,
+        starting_balances  = starting_balances,
+        report_data        = report_data,
+        prev_year          = prev_dt.year,
+        prev_month         = prev_dt.month,
+        next_year          = next_dt.year,
+        next_month         = next_dt.month,
     )
+
 
 
 @bp.route('/manage')

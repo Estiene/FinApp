@@ -1,88 +1,89 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h2>Daily Cash-Flow: {{ month }}/{{ year }}</h2>
+  <h2>Monthly Cash-Flow: {{ month }}/{{ year }}</h2>
 
-  <form method="get" class="row g-3 mb-4">
-    <div class="col-md-3">
-      <select name="account_id" class="form-select">
-        <option value="all" {% if selected_account=='all' %}selected{% endif %}>
-          All Accounts
-        </option>
-        {% for acct in accounts %}
-          <option value="{{ acct.id }}"
-                  {% if selected_account|int==acct.id %}selected{% endif %}>
-            {{ acct.name }}
-          </option>
-        {% endfor %}
-      </select>
+  <!-- Controls: Month nav + per-account starting balances -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <a
+        href="{{ url_for('main.report',
+                         year=prev_year, month=prev_month) }}"
+        class="btn btn-outline-secondary me-2"
+      >&laquo; Prev</a>
+      <a
+        href="{{ url_for('main.report',
+                         year=next_year, month=next_month) }}"
+        class="btn btn-outline-secondary"
+      >Next &raquo;</a>
     </div>
 
-    <input type="hidden" name="year" value="{{ year }}">
-    <input type="hidden" name="month" value="{{ month }}">
+    <form method="get" class="row g-3 align-items-end">
+      <!-- preserve month/year in querystring -->
+      <input type="hidden" name="year"  value="{{ year }}">
+      <input type="hidden" name="month" value="{{ month }}">
 
-    <div class="col-md-3">
-      <input
-        type="text"
-        name="starting_balance"
-        class="form-control"
-        placeholder="Starting Balance"
-        value="{{ "%.2f"|format(starting_balance) }}"
-      />
-    </div>
+      {% for acct in accounts %}
+      <div class="col-auto">
+        <label class="form-label">
+          {{ acct.name }}
+        </label>
+        <input
+          type="text"
+          name="starting_balance_{{ acct.id }}"
+          class="form-control"
+          style="width:6rem;"
+          value="{{ '%.2f'|format(starting_balances[acct.id]) }}"
+        >
+      </div>
+      {% endfor %}
 
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-primary w-100">
-        Apply
-      </button>
-    </div>
-  </form>
-
-  <div class="d-flex justify-content-between mb-4">
-    <a
-      href="?year={{ prev_year }}&month={{ prev_month }}&account_id={{ selected_account }}&starting_balance={{ starting_balance }}"
-      class="btn btn-outline-secondary"
-    >&laquo; Prev</a>
-    <a
-      href="?year={{ next_year }}&month={{ next_month }}&account_id={{ selected_account }}&starting_balance={{ starting_balance }}"
-      class="btn btn-outline-secondary"
-    >Next &raquo;</a>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">
+          Apply
+        </button>
+      </div>
+    </form>
   </div>
 
+  <!-- Per-account expandable reports -->
   {% for section in report_data %}
-    <details class="mb-4">
-      <summary class="h4">{{ section.account.name }}</summary>
+  <details class="mb-4">
+    <summary class="h5">
+      {{ section.account.name }}
+      &ndash; Start: ${{ '%.2f'|format(section.starting_balance) }}
+      &nbsp; | &nbsp;
+      Ending: ${{ '%.2f'|format(section.days[-1].balance) }}
+    </summary>
 
-      <table class="table table-striped mb-0">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Income</th>
-            <th>Bills</th>
-            <th>Net</th>
-            <th>Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in section.days %}
-          <tr>
-            <td>{{ d.date }}</td>
-            <td>${{ "%.2f"|format(d.income) }}</td>
-            <td>${{ "%.2f"|format(d.bills) }}</td>
-
-            {# Net: red if negative, green if positive #}
-            <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
-              {% if d.net >= 0 %}+{% endif %}${{ "%.2f"|format(d.net|abs) }}
-            </td>
-
-            {# Balance: red if negative, green if positive #}
-            <td class="{% if d.balance < 0 %}text-danger{% elif d.balance > 0 %}text-success{% endif %}">
-              ${{ "%.2f"|format(d.balance) }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </details>
+    <table class="table table-striped mt-3">
+      <thead>
+        <tr>
+          <th>Date</th><th>Income</th><th>Bills</th>
+          <th>Net</th><th>Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in section.days %}
+        <tr>
+          <td>{{ d.date.strftime('%-m/%-d') }}</td>
+          <td>${{ '%.2f'|format(d.income) }}</td>
+          <td>${{ '%.2f'|format(d.bills) }}</td>
+          <td
+            class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}"
+          >
+            ${{ '%.2f'|format(d.net) }}
+          </td>
+          <td
+            class="{% if d.balance < 0 %}text-danger{% elif d.balance > 0 %}text-success{% endif %}"
+          >
+            ${{ '%.2f'|format(d.balance) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
   {% endfor %}
+
 {% endblock %}
