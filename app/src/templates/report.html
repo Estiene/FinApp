@@ -3,45 +3,58 @@
 {% block content %}
   <h2>Monthly Cash-Flow: {{ month }}/{{ year }}</h2>
 
-  <!-- Controls: Month nav + per-account starting balances -->
+  <!-- Controls: Month nav + per-account starting balances + start date -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <a
         href="{{ url_for('main.report',
-                         year=prev_year, month=prev_month) }}"
+                         year=prev_year,
+                         month=prev_month,
+                         start_date=start_date.strftime('%Y-%m-%d')) }}"
         class="btn btn-outline-secondary me-2"
       >&laquo; Prev</a>
       <a
         href="{{ url_for('main.report',
-                         year=next_year, month=next_month) }}"
+                         year=next_year,
+                         month=next_month,
+                         start_date=start_date.strftime('%Y-%m-%d')) }}"
         class="btn btn-outline-secondary"
       >Next &raquo;</a>
     </div>
 
     <form method="get" class="row g-3 align-items-end">
-      <!-- preserve month/year in querystring -->
-      <input type="hidden" name="year"  value="{{ year }}">
+      <!-- preserve year/month -->
+      <input type="hidden" name="year" value="{{ year }}">
       <input type="hidden" name="month" value="{{ month }}">
 
+      <!-- New: customizable start date -->
+      <div class="col-auto">
+        <label for="start-date" class="form-label">From</label>
+        <input
+          type="date"
+          id="start-date"
+          name="start_date"
+          class="form-control"
+          value="{{ start_date.strftime('%Y-%m-%d') }}"
+        />
+      </div>
+
+      <!-- per-account starting balances -->
       {% for acct in accounts %}
       <div class="col-auto">
-        <label class="form-label">
-          {{ acct.name }}
-        </label>
+        <label class="form-label">{{ acct.name }}</label>
         <input
           type="text"
           name="starting_balance_{{ acct.id }}"
           class="form-control"
-          style="width:6rem;"
+          style="width: 6rem;"
           value="{{ '%.2f'|format(starting_balances[acct.id]) }}"
-        >
+        />
       </div>
       {% endfor %}
 
       <div class="col-auto">
-        <button type="submit" class="btn btn-primary">
-          Apply
-        </button>
+        <button type="submit" class="btn btn-primary">Apply</button>
       </div>
     </form>
   </div>
@@ -59,8 +72,11 @@
     <table class="table table-striped mt-3">
       <thead>
         <tr>
-          <th>Date</th><th>Income</th><th>Bills</th>
-          <th>Net</th><th>Balance</th>
+          <th>Date</th>
+          <th>Income</th>
+          <th>Bills</th>
+          <th>Net</th>
+          <th>Balance</th>
         </tr>
       </thead>
       <tbody>
@@ -69,14 +85,10 @@
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
           <td>${{ '%.2f'|format(d.income) }}</td>
           <td>${{ '%.2f'|format(d.bills) }}</td>
-          <td
-            class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}"
-          >
+          <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.net) }}
           </td>
-          <td
-            class="{% if d.balance < 0 %}text-danger{% elif d.balance > 0 %}text-success{% endif %}"
-          >
+          <td class="{% if d.balance < 0 %}text-danger{% elif d.balance > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.balance) }}
           </td>
         </tr>
@@ -85,5 +97,4 @@
     </table>
   </details>
   {% endfor %}
-
 {% endblock %}
