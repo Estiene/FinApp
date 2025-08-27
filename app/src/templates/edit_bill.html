@@ -1,3 +1,4 @@
+{# src/templates/edit_bill.html #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -5,53 +6,60 @@
 
   <form
     method="POST"
-    action="{{ url_for('main.edit_bill', bill_id=bill.id) }}"
+    action="{{ url_for('main.bills', bill_id=bill.id) }}"
     class="row g-3 mb-4"
   >
     {% if csrf_token %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
 
-    <div class="col-md-2">
-      <label class="form-label">Account</label>
-      <select name="account_id" class="form-select" required>
-        {% for acct in accounts %}
-          <option
-            value="{{ acct.id }}"
-            {% if acct.id == bill.account_id %}selected{% endif %}
-          >{{ acct.name }}</option>
-        {% endfor %}
-      </select>
+    <div class="col-md-3">
+      <div class="d-flex align-items-center">
+        <select name="account_id" class="form-select me-2" required>
+          <option value="">Select an Account</option>
+          {% for acct in accounts %}
+            <option
+              value="{{ acct.id }}"
+              {% if acct.id == bill.account_id %}selected{% endif %}
+            >
+              {{ acct.name }}
+            </option>
+          {% endfor %}
+        </select>
+        <a href="{{ url_for('main.accounts') }}" class="btn btn-link p-0">
+          Manage
+        </a>
+      </div>
     </div>
 
-    <div class="col-md-3">
-      <label class="form-label">Name</label>
+    <div class="col-md-2">
       <input
         type="text"
         name="name"
         class="form-control"
+        placeholder="Bill Name"
         value="{{ bill.name }}"
         required
       />
     </div>
 
     <div class="col-md-2">
-      <label class="form-label">Owner</label>
       <input
         type="text"
         name="owner"
         class="form-control"
+        placeholder="Owner"
         value="{{ bill.owner }}"
         required
       />
     </div>
 
     <div class="col-md-1">
-      <label class="form-label">Day</label>
       <input
         type="number"
         name="due_day"
         class="form-control"
+        placeholder="Day"
         min="1"
         max="31"
         value="{{ bill.due_day }}"
@@ -60,25 +68,21 @@
     </div>
 
     <div class="col-md-2">
-      <label class="form-label">Amount</label>
       <input
         type="number"
         step="0.01"
         name="amount"
         class="form-control"
+        placeholder="Amount"
         value="{{ bill.amount }}"
         required
       />
     </div>
 
-    <div class="col-md-2 d-flex align-items-end">
+    <div class="col-md-2">
       <button type="submit" class="btn btn-primary w-100">
         Save Changes
       </button>
     </div>
   </form>
-
-  <a href="{{ url_for('main.bills') }}" class="btn btn-secondary">
-    Cancel
-  </a>
 {% endblock %}
