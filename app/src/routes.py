@@ -229,7 +229,8 @@ def report():
     """
     Generate and display a cash-flow report for every account,
     each with its own starting balance, from an optional start date
-    through the end of the selected month.
+    through the end of the selected month. Any start_date outside the
+    month will fall back to the 1st.
     """
     # 1. Parse year/month (defaults to today)
     today = date.today()
@@ -259,15 +260,18 @@ def report():
             sb = 0.0
         starting_balances[acct.id] = sb
 
-    # 4. Compute month’s first day, last day, and last valid day-of-month
+    # 4. Compute this month’s first day, last day, and last valid DOM
     first_of_month = date(year, month, 1)
     _, last_dom   = monthrange(year, month)
     last_day      = first_of_month + relativedelta(months=1) - relativedelta(days=1)
 
+    # 4a. Clamp start_date into [first_of_month, last_day]
+    if start_date < first_of_month or start_date > last_day:
+        start_date = first_of_month
+
     # 5. Helper: all pay-dates of one Income within [start_date, last_day]
     def income_dates_for_month(inc):
         dates, freq = [], inc.frequency
-
         if freq in ('weekly', 'biweekly'):
             step = relativedelta(weeks=(1 if freq=='weekly' else 2))
             seed = inc.next_pay
@@ -287,10 +291,8 @@ def report():
 
         else:  # twice_monthly
             for d in (inc.day_of_month_1, inc.day_of_month_2):
-                try:
-                    pay = date(year, month, d)
-                except ValueError:
-                    continue
+                dom = min(d, last_dom)  # also cap here if you like
+                pay = date(year, month, dom)
                 if start_date <= pay <= last_day:
                     dates.append(pay)
 
@@ -356,9 +358,6 @@ def report():
         next_year          = next_dt.year,
         next_month         = next_dt.month,
     )
-
-
-
 
 @bp.route('/manage')
 def manage():
