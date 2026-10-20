@@ -162,8 +162,12 @@ def update_account_balance(account_id):
 
     try:
         balance = Decimal(raw_balance)
-        if not balance.is_finite() or balance.as_tuple().exponent < -2:
+        if not balance.is_finite():
             raise InvalidOperation
+        rounded_balance = balance.quantize(Decimal("0.01"))
+        if balance != rounded_balance:
+            raise InvalidOperation
+        balance = rounded_balance
     except (InvalidOperation, ValueError):
         flash("Enter a valid balance with no more than two decimal places.", 'danger')
         return redirect(url_for('main.index'))
