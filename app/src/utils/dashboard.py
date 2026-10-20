@@ -93,9 +93,8 @@ def bill_dates(bill, start_date, end_date):
 def build_dashboard_data(accounts, today=None):
     """Calculate current-month totals and each account's projected balance.
 
-    Account starting balances are interpreted as the balance at the beginning
-    of the balance_as_of date. Scheduled events on that date are included.
-    The calculation is live and is not persisted.
+    Account starting balances are snapshots at the end of balance_as_of. Events
+    after that date through today are applied. The calculation is live.
     """
     today = today or date.today()
     month_start = date(today.year, today.month, 1)
@@ -115,12 +114,13 @@ def build_dashboard_data(accounts, today=None):
 
         balance_as_of = account.balance_as_of or today
         projected_balance = _money(account.starting_balance)
-        if balance_as_of <= today:
+        if balance_as_of < today:
+            projection_start = balance_as_of + timedelta(days=1)
             for income in account.incomes:
-                count = len(income_dates(income, balance_as_of, today))
+                count = len(income_dates(income, projection_start, today))
                 projected_balance += _money(income.amount) * count
             for bill in account.bills:
-                count = len(bill_dates(bill, balance_as_of, today))
+                count = len(bill_dates(bill, projection_start, today))
                 projected_balance -= _money(bill.amount) * count
 
         account_summaries.append({
