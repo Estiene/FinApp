@@ -19,7 +19,7 @@ def create_app():
 
     # 3. Auto-create tables if missing
     with app.app_context():
-        if not db.inspect(db.engine).has_table("account"):
+        if not db.inspect(db.engine).has_table("accounts"):
             db.create_all()
             print("✅ Database tables created.")
 
