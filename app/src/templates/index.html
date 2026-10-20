@@ -1,12 +1,83 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="text-center">
-    <h1>Welcome to FinApp</h1>
-    <p class="lead">Track your income and bills with ease.</p>
-    <a href="/bills" class="btn btn-primary m-2">Manage Bills</a>
-    <a href="/incomes" class="btn btn-success m-2">Manage Incomes</a>
-    <a href="/report" class="btn btn-info m-2">View Report</a>
+  <div class="d-flex flex-wrap justify-content-between align-items-end mb-4 gap-2">
+    <div>
+      <h1 class="mb-1">Dashboard</h1>
+      <p class="text-body-secondary mb-0">
+        {{ today.strftime('%B %-d, %Y') }} · Current-month overview
+      </p>
+    </div>
+    <a href="{{ url_for('main.report') }}" class="btn btn-outline-primary">View cash-flow report</a>
   </div>
-{% endblock %}
 
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card h-100 border-0 shadow-sm"><div class="card-body">
+        <div class="text-body-secondary mb-2">Total Income</div>
+        <div class="display-6 text-success">\${{ '{:,.2f}'.format(total_income) }}</div>
+        <div class="small text-body-secondary">Scheduled {{ month_start.strftime('%b %-d') }}–{{ month_end.strftime('%b %-d') }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100 border-0 shadow-sm"><div class="card-body">
+        <div class="text-body-secondary mb-2">Total Bills</div>
+        <div class="display-6">\${{ '{:,.2f}'.format(total_bills) }}</div>
+        <div class="small text-body-secondary">Scheduled {{ month_start.strftime('%b %-d') }}–{{ month_end.strftime('%b %-d') }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
+    <div>
+      <h2 class="h4 mb-1">Projected Balance Today</h2>
+      <p class="text-body-secondary mb-0">Based on each account's saved balance and scheduled income and bills.</p>
+    </div>
+    <span class="small text-body-secondary">As of {{ today.strftime('%b %-d, %Y') }}</span>
+  </div>
+
+  {% if account_summaries %}
+    <div class="row g-3">
+      {% for summary in account_summaries %}
+        <div class="col-xl-6">
+          <div class="card h-100 shadow-sm"><div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <h3 class="h5 mb-1">{{ summary.account.name }}</h3>
+                <div class="small text-body-secondary">Balance entered as of {{ summary.balance_as_of.strftime('%b %-d, %Y') }}</div>
+              </div>
+              <div class="text-end">
+                <div class="small text-body-secondary">Projected balance</div>
+                <div class="h3 mb-0 {% if summary.projected_balance < 0 %}text-danger{% elif summary.projected_balance > 0 %}text-success{% endif %}">
+                  \${{ '{:,.2f}'.format(summary.projected_balance) }}
+                </div>
+              </div>
+            </div>
+
+            <form method="post" action="{{ url_for('main.update_account_balance', account_id=summary.account.id) }}" class="border-top pt-3">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-5">
+                  <label class="form-label small" for="balance-{{ summary.account.id }}">Actual balance ($)</label>
+                  <input id="balance-{{ summary.account.id }}" type="number" name="starting_balance" class="form-control" step="0.01" required value="{{ '%.2f'|format(summary.account.starting_balance) }}">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label small" for="balance-date-{{ summary.account.id }}">Balance as of</label>
+                  <input id="balance-date-{{ summary.account.id }}" type="date" name="balance_as_of" class="form-control" required max="{{ today.isoformat() }}" value="{{ summary.balance_as_of.isoformat() }}">
+                </div>
+                <div class="col-sm-3"><button type="submit" class="btn btn-outline-primary w-100">Save</button></div>
+              </div>
+              <div class="form-text">Events on this date are assumed to already be reflected in the actual balance.</div>
+            </form>
+          </div></div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">
+      <h3 class="h5">No accounts yet</h3>
+      <p class="mb-2">Create an account before adding income or bills to your dashboard.</p>
+      <a href="{{ url_for('main.accounts') }}" class="btn btn-primary">Create an account</a>
+    </div>
+  {% endif %}
+{% endblock %}
