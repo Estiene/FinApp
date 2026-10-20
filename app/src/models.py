@@ -14,7 +14,7 @@ class Account(db.Model):
     starting_balance = db.Column(
         db.Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
-    # The balance is treated as the balance at the beginning of this date.
+    # Snapshot balance at the end of this date; later scheduled events are projected.
     balance_as_of = db.Column(db.Date, nullable=False, default=date.today)
 
     # relationships
