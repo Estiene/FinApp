@@ -8,7 +8,7 @@ from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income
-from .utils.dashboard import build_dashboard_data
+from .utils.dashboard import build_dashboard_data, bill_dates
 from calendar import monthrange
 
 bp = Blueprint('main', __name__)
@@ -50,14 +50,52 @@ def parse_float_arg(name, default, label):
         return default
 
 
+BILL_FREQUENCIES = ("monthly", "weekly", "biweekly", "every_three_weeks")
+
+
 def build_bill(form, existing=None):
-    """Fill a Bill instance (new or existing) from form data."""
-    bill = existing or Bill()
-    bill.name       = form['name']
-    bill.owner      = form['owner']
-    bill.amount     = form['amount']
-    bill.due_day    = int(form['due_day'])
-    bill.account_id = int(form['account_id'])
+    """Validate schedule before modifying an existing or new bill."""
+    frequency = form.get("frequency", "monthly")
+    if frequency not in BILL_FREQUENCIES:
+        raise ValueError("Choose a valid bill frequency.")
+    try:
+        account_id = int(form["account_id"])
+        amount = Decimal(form["amount"])
+        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+            raise ValueError
+        if not Account.query.get(account_id):
+            raise ValueError
+    except (KeyError, ValueError, InvalidOperation):
+        raise ValueError("Enter a valid account and positive amount (up to two decimals).")
+
+    name = form.get("name", "").strip()
+    owner = form.get("owner", "").strip()
+    if not name or not owner:
+        raise ValueError("Bill name and owner are required.")
+
+    if frequency == "monthly":
+        try:
+            due_day = int(form["due_day"])
+        except (KeyError, ValueError):
+            raise ValueError("Enter a monthly due day from 1 to 31.")
+        if not 1 <= due_day <= 31:
+            raise ValueError("Enter a monthly due day from 1 to 31.")
+        next_due = None
+    else:
+        try:
+            next_due = date.fromisoformat(form["next_due"])
+        except (KeyError, ValueError):
+            raise ValueError("Enter a valid first due date.")
+        due_day = next_due.day
+
+    bill = existing if existing is not None else Bill()
+    bill.name = name
+    bill.owner = owner
+    bill.amount = amount
+    bill.due_day = due_day
+    bill.frequency = frequency
+    bill.next_due = next_due
+    bill.account_id = account_id
     return bill
 
 
@@ -199,8 +237,12 @@ def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
 
     if request.method == 'POST':
-        existing = Bill.query.get(bill_id) if bill_id else None
-        b = build_bill(request.form, existing)
+        existing = Bill.query.get_or_404(bill_id) if bill_id else None
+        try:
+            b = build_bill(request.form, existing)
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return redirect(url_for('main.bills', bill_id=bill_id) if bill_id else url_for('main.bills'))
         db.session.add(b)
         db.session.commit()
         action = 'Updated' if bill_id else 'Added'
@@ -349,12 +391,10 @@ def report():
             for dt in income_dates_for_month(inc):
                 income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
 
-        # map each date → total bills, capping due_day to last_dom
+        # Reuse the same recurring bill engine as the dashboard.
         bill_map = {}
         for b in acct.bills:
-            dom = min(b.due_day, last_dom)
-            due = date(year, month, dom)
-            if start_date <= due <= last_day:
+            for due in bill_dates(b, start_date, last_day):
                 bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
 
         # walk from start_date through end of month
