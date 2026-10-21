@@ -33,6 +33,9 @@ class Bill(db.Model):
     name = db.Column(db.String(100), nullable=False)
     owner = db.Column(db.String(100), nullable=False)
     due_day = db.Column(db.Integer, nullable=False)
+    # Existing records default to monthly; interval schedules use next_due as anchor.
+    frequency = db.Column(db.String(20), nullable=False, default="monthly")
+    next_due = db.Column(db.Date, nullable=True)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
 
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)

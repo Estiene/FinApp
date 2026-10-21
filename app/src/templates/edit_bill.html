@@ -13,76 +13,76 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
 
-    <div class="col-md-3">
-      <div class="d-flex align-items-center">
-        <select name="account_id" class="form-select me-2" required>
-          <option value="">Select an Account</option>
+    <div class="col-md-6">
+      <label for="bill-account" class="form-label">Payment account</label>
+      <div class="d-flex align-items-center gap-2">
+        <select id="bill-account" name="account_id" class="form-select" required>
+          <option value="">Select an account</option>
           {% for acct in accounts %}
-            <option
-              value="{{ acct.id }}"
-              {% if acct.id == bill.account_id %}selected{% endif %}
-            >
-              {{ acct.name }}
-            </option>
+          <option value="{{ acct.id }}" {% if acct.id == bill.account_id %}selected{% endif %}>{{ acct.name }}</option>
           {% endfor %}
         </select>
-        <a href="{{ url_for('main.accounts') }}" class="btn btn-link p-0">
-          Manage
-        </a>
+        <a href="{{ url_for('main.accounts') }}" class="btn btn-link">Manage</a>
       </div>
     </div>
-
-    <div class="col-md-2">
-      <input
-        type="text"
-        name="name"
-        class="form-control"
-        placeholder="Bill Name"
-        value="{{ bill.name }}"
-        required
-      />
+    <div class="col-md-6">
+      <label for="bill-name" class="form-label">Bill name</label>
+      <input id="bill-name" type="text" name="name" class="form-control" value="{{ bill.name }}" placeholder="e.g., Internet bill" required>
     </div>
-
-    <div class="col-md-2">
-      <input
-        type="text"
-        name="owner"
-        class="form-control"
-        placeholder="Owner"
-        value="{{ bill.owner }}"
-        required
-      />
+    <div class="col-md-6">
+      <label for="bill-owner" class="form-label">Owner</label>
+      <input id="bill-owner" type="text" name="owner" class="form-control" value="{{ bill.owner }}" placeholder="Who is responsible?" required>
     </div>
-
-    <div class="col-md-1">
-      <input
-        type="number"
-        name="due_day"
-        class="form-control"
-        placeholder="Day"
-        min="1"
-        max="31"
-        value="{{ bill.due_day }}"
-        required
-      />
+    <div class="col-md-6">
+      <label for="bill-amount" class="form-label">Amount per payment ($)</label>
+      <input id="bill-amount" type="number" min="0" step="0.01" name="amount" class="form-control" value="{{ bill.amount }}" placeholder="0.00" required>
     </div>
-
-    <div class="col-md-2">
-      <input
-        type="number"
-        step="0.01"
-        name="amount"
-        class="form-control"
-        placeholder="Amount"
-        value="{{ bill.amount }}"
-        required
-      />
+    <div class="col-md-6">
+      <label for="bill-frequency" class="form-label">How often is this bill due?</label>
+      <select id="bill-frequency" name="frequency" class="form-select" required>
+        {% for value, label in [('monthly', 'Monthly'), ('weekly', 'Weekly'), ('biweekly', 'Every 2 weeks'), ('every_three_weeks', 'Every 3 weeks')] %}
+        <option value="{{ value }}" {% if (bill.frequency or 'monthly') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
     </div>
-
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-primary w-100">
-        Save Changes
-      </button>
+    <div id="bill-monthly-field" class="col-md-6">
+      <label for="bill-due-day" class="form-label">Day of month (1–31)</label>
+      <input id="bill-due-day" type="number" name="due_day" class="form-control" min="1" max="31" value="{{ bill.due_day }}" placeholder="e.g., 15">
+      <div class="form-text">For monthly bills only.</div>
+    </div>
+    <div id="bill-interval-field" class="col-md-6" hidden>
+      <label for="bill-next-due" class="form-label">First payment date</label>
+      <input id="bill-next-due" type="date" name="next_due" class="form-control" value="{{ bill.next_due.isoformat() if bill.next_due else '' }}">
+      <div class="form-text">The schedule repeats from this date.</div>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <a href="{{ url_for('main.bills') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
     </div>
   </form>
+
+  <script>
+    (function () {
+      const frequency = document.getElementById('bill-frequency');
+      const monthlyField = document.getElementById('bill-monthly-field');
+      const intervalField = document.getElementById('bill-interval-field');
+      const dueDay = document.getElementById('bill-due-day');
+      const nextDue = document.getElementById('bill-next-due');
+
+      function updateScheduleFields() {
+        const monthly = frequency.value === 'monthly';
+        monthlyField.hidden = !monthly;
+        intervalField.hidden = monthly;
+        monthlyField.style.display = monthly ? '' : 'none';
+        intervalField.style.display = monthly ? 'none' : '';
+        dueDay.required = monthly;
+        dueDay.disabled = !monthly;
+        nextDue.required = !monthly;
+        nextDue.disabled = monthly;
+      }
+
+      frequency.addEventListener('change', updateScheduleFields);
+      updateScheduleFields();
+    })();
+  </script>
 {% endblock %}

@@ -77,10 +77,27 @@ def income_dates(income, start_date, end_date):
 
 
 def bill_dates(bill, start_date, end_date):
-    """Return monthly bill due dates within an inclusive date range."""
-    dates = []
+    """Inclusive occurrences for monthly or anchored interval-based bills."""
     if start_date > end_date:
-        return dates
+        return []
+    frequency = getattr(bill, "frequency", None) or "monthly"
+    if frequency in ("weekly", "biweekly", "every_three_weeks"):
+        anchor = getattr(bill, "next_due", None)
+        if anchor is None:
+            return []
+        interval = {"weekly": 7, "biweekly": 14, "every_three_weeks": 21}[frequency]
+        # Never create occurrences before the first scheduled due date.
+        first = max(start_date, anchor)
+        offset = (first - anchor).days
+        occurrence = anchor + timedelta(days=((offset + interval - 1) // interval) * interval)
+        result = []
+        while occurrence <= end_date:
+            result.append(occurrence)
+            occurrence += timedelta(days=interval)
+        return result
+    if frequency != "monthly":
+        return []
+    dates = []
     for month_start in _month_starts(start_date, end_date):
         last_day = monthrange(month_start.year, month_start.month)[1]
         due_day = min(max(int(bill.due_day), 1), last_day)

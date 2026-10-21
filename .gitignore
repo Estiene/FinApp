@@ -1,0 +1,11 @@
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+
+# Local Python virtual environments
+.venv/
+venv/
+
+# Local environment and test artifacts
+.env
+.pytest_cache/
