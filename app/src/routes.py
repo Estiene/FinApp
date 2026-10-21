@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
-from .models import db, Account, Bill, Income
+from .models import db, Account, Bill, Income, CreditCard
 from .utils.dashboard import build_dashboard_data, bill_dates
 from calendar import monthrange
 
@@ -169,9 +169,14 @@ def income_dates_for_month(inc, first_day, last_day):
 @bp.route('/')
 def index():
     accounts = Account.query.order_by(Account.name).all()
-    dashboard = build_dashboard_data(accounts)
-    return render_template('index.html', **dashboard)
+    credit_cards = CreditCard.query.order_by(CreditCard.name).all()
 
+    dashboard = build_dashboard_data(
+        accounts,
+        credit_cards=credit_cards,
+    )
+
+    return render_template('index.html', **dashboard)
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():
