@@ -51,13 +51,25 @@
         type="number"
         name="due_day"
         class="form-control"
-        placeholder="Day"
+        placeholder="Monthly day"
         min="1"
         max="31"
-        required
+        
       />
     </div>
 
+    <div class="col-md-2">
+      <label class="form-label">Frequency</label>
+      <select name="frequency" class="form-select" required>
+        {% for value, label in [('monthly', 'Monthly'), ('weekly', 'Weekly'), ('biweekly', 'Every 2 weeks'), ('every_three_weeks', 'Every 3 weeks')] %}
+        <option value="{{ value }}" {% if bill is defined and (bill.frequency or 'monthly') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">First due date (non-monthly)</label>
+      <input type="date" name="next_due" class="form-control" value="{{ bill.next_due.isoformat() if bill is defined and bill.next_due else '' }}">
+    </div>
     <div class="col-md-2">
       <input
         type="number"
@@ -84,7 +96,7 @@
         <th>Account</th>
         <th>Name</th>
         <th>Owner</th>
-        <th>Due Day</th>
+        <th>Schedule</th>
         <th>Amount</th>
         <th>Actions</th>
       </tr>
@@ -96,7 +108,7 @@
         <td>{{ bill.account.name }}</td>
         <td>{{ bill.name }}</td>
         <td>{{ bill.owner }}</td>
-        <td>{{ bill.due_day }}</td>
+        <td>{% if (bill.frequency or 'monthly') == 'monthly' %}Monthly, day {{ bill.due_day }}{% else %}{{ (bill.frequency or '')|replace('_', ' ')|title }} from {{ bill.next_due }}{% endif %}</td>
         <td>${{ "%.2f"|format(bill.amount) }}</td>
         <td>
           <a
