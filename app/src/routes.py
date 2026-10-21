@@ -3,10 +3,12 @@
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, flash, abort)
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income
+from .utils.dashboard import build_dashboard_data
 from calendar import monthrange
 
 bp = Blueprint('main', __name__)
@@ -128,7 +130,9 @@ def income_dates_for_month(inc, first_day, last_day):
 
 @bp.route('/')
 def index():
-    return render_template('index.html')
+    accounts = Account.query.order_by(Account.name).all()
+    dashboard = build_dashboard_data(accounts)
+    return render_template('index.html', **dashboard)
 
 
 @bp.route('/accounts', methods=['GET', 'POST'])
@@ -147,6 +151,42 @@ def accounts():
     accts = Account.query.order_by(Account.name).all()
     return render_template('accounts.html', accounts=accts)
 
+
+
+@bp.route('/accounts/<int:account_id>/balance', methods=['POST'])
+def update_account_balance(account_id):
+    """Save the account's actual balance snapshot and its effective date."""
+    account = Account.query.get_or_404(account_id)
+    raw_balance = request.form.get('starting_balance', '').strip()
+    raw_date = request.form.get('balance_as_of', '').strip()
+
+    try:
+        balance = Decimal(raw_balance)
+        if not balance.is_finite():
+            raise InvalidOperation
+        rounded_balance = balance.quantize(Decimal("0.01"))
+        if balance != rounded_balance:
+            raise InvalidOperation
+        balance = rounded_balance
+    except (InvalidOperation, ValueError):
+        flash("Enter a valid balance with no more than two decimal places.", 'danger')
+        return redirect(url_for('main.index'))
+
+    try:
+        balance_date = parser.isoparse(raw_date).date()
+    except (ValueError, TypeError):
+        flash("Enter a valid balance date.", 'danger')
+        return redirect(url_for('main.index'))
+
+    if balance_date > date.today():
+        flash("The balance date cannot be in the future.", 'danger')
+        return redirect(url_for('main.index'))
+
+    account.starting_balance = balance
+    account.balance_as_of = balance_date
+    db.session.commit()
+    flash(f"Saved starting balance for '{account.name}'.", 'success')
+    return redirect(url_for('main.index'))
 
 @bp.route('/accounts/<int:account_id>/delete', methods=['POST'])
 def delete_account(account_id):

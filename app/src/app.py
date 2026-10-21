@@ -17,11 +17,9 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
 
-    # 3. Auto-create tables if missing
-    with app.app_context():
-        if not db.inspect(db.engine).has_table("account"):
-            db.create_all()
-            print("✅ Database tables created.")
+    # 3. Database schema management
+    ## Tables are managed through Flask-Migrate/Alembic
+    ## Do not automatically create tables during application startup.
 
     # 4. Register blueprints
     app.register_blueprint(main_bp)
