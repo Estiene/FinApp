@@ -101,6 +101,13 @@ class CreditCard(db.Model):
         db.Integer, nullable=False, default=0, server_default="0",
     )
 
+    # Optional forecasting inputs. NULL means not supplied by the user.
+    annual_percentage_rate = db.Column(db.Numeric(5, 2), nullable=True)
+    credit_limit = db.Column(db.Numeric(12, 2), nullable=True)
+    promotional_apr = db.Column(db.Numeric(5, 2), nullable=True)
+    promotional_apr_end_date = db.Column(db.Date, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
+
     payment_account_id = db.Column(
         db.Integer,
         db.ForeignKey('accounts.id'),
