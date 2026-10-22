@@ -265,6 +265,60 @@ class CashFlowRouteTests(unittest.TestCase):
              "bill_related": date(2026, 12, 7)},
         )
 
+    def test_bill_payment_method_card_create_edit_and_cash_flow(self):
+        from src.models import Account, Bill, CreditCard
+        checking = Account(name="Checking")
+        savings = Account(name="Savings")
+        self.db.session.add_all([checking, savings])
+        self.db.session.flush()
+        visa = CreditCard(
+            name="Visa", payment_account_id=checking.id,
+            balance=Decimal("500"), balance_as_of=date(2026, 10, 1),
+            statement_close_day=15, payment_due_day=10,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+            extra_payment_day=8, bill_payment_timing="days_before_due",
+            bill_payment_days_before=3,
+        )
+        self.db.session.add(visa)
+        self.db.session.commit()
+        form = {
+            "name": "Electric", "owner": "Test", "amount": "100",
+            "frequency": "monthly", "due_day": "2",
+            "payment_method": f"card:{visa.id}",
+        }
+        self.assertIn('value="card:', self.app.test_client().get("/bills").get_data(as_text=True))
+        self.assertEqual(self.app.test_client().post("/bills", data=form).status_code, 302)
+        electric = Bill.query.filter_by(name="Electric").one()
+        self.assertEqual(electric.credit_card_id, visa.id)
+        self.assertEqual(electric.account_id, checking.id)
+        edit_html = self.app.test_client().get(f"/bills/{electric.id}").get_data(as_text=True)
+        self.assertIn(f'value="card:{visa.id}" selected', edit_html)
+        cashflow = self.app.test_client().get(
+            f"/report?year=2026&month=12&starting_balance_{checking.id}=1000"
+        ).get_data(as_text=True)
+        self.assertIn("Ending: $825.00", cashflow)
+        # Switch to bank funding and confirm the card association clears.
+        form["payment_method"] = f"account:{savings.id}"
+        self.assertEqual(self.app.test_client().post(
+            f"/bills/{electric.id}", data=form
+        ).status_code, 302)
+        self.db.session.refresh(electric)
+        self.assertIsNone(electric.credit_card_id)
+        self.assertEqual(electric.account_id, savings.id)
+
+    def test_bill_payment_method_rejects_invalid_card(self):
+        from src.models import Account, Bill
+        checking = Account(name="Checking")
+        self.db.session.add(checking)
+        self.db.session.commit()
+        response = self.app.test_client().post("/bills", data={
+            "name": "Electric", "owner": "Test", "amount": "100",
+            "frequency": "monthly", "due_day": "2",
+            "payment_method": "card:999999",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Bill.query.count(), 0)
+
     def test_cash_flow_only_deducts_payments_from_linked_account(self):
         from src.models import Account, CreditCard
         checking = Account(name="Checking")
