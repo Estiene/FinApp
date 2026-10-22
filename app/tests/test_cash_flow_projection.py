@@ -59,5 +59,18 @@ class DailyAccountProjectionTests(unittest.TestCase):
         self.assertEqual(rows[0]["balance"], Decimal("75.00"))
 
 
+    def test_dashboard_exposes_daily_forecast_and_warning(self):
+        from src.utils.dashboard import build_dashboard_data
+        bills = [SimpleNamespace(frequency="monthly", due_day=2,
+                                 next_due=None, amount=Decimal("120"),
+                                 credit_card_id=None)]
+        acct = account(bills=bills)
+        acct.name = "Checking"
+        data = build_dashboard_data([acct], today=date(2026, 11, 1))
+        summary = data["account_summaries"][0]
+        self.assertEqual(summary["next_30_days_low"], Decimal("-20.00"))
+        self.assertEqual(summary["first_negative_date"], date(2026, 11, 2))
+        self.assertEqual(summary["next_30_days"][0]["balance"], Decimal("-20.00"))
+
 if __name__ == "__main__":
     unittest.main()
