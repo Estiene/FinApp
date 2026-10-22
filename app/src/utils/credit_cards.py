@@ -216,13 +216,15 @@ def recorded_payments_for_account(
 
         for statement in card.statements:
             if (
-                statement.payment_date is None
-                or statement.actual_payment is None
+                statement.payment_date is not None
+                and statement.actual_payment is not None
+                and start_date <= statement.payment_date <= end_date
             ):
-                continue
-
-            if start_date <= statement.payment_date <= end_date:
                 total += max(ZERO, money(statement.actual_payment))
+
+            for payment in getattr(statement, "payments", []):
+                if start_date <= payment.payment_date <= end_date:
+                    total += max(ZERO, money(payment.amount))
 
     return total.quantize(CENT)
 
@@ -253,15 +255,29 @@ def projected_card_balance(card, today):
         ):
             balance -= max(ZERO, money(statement.actual_payment))
 
+        for payment in getattr(statement, "payments", []):
+            if start_date <= payment.payment_date <= today:
+                balance -= max(ZERO, money(payment.amount))
+
     return max(ZERO, balance).quantize(CENT)
 
-def remaining_planned_statement_payment(card, statement, outstanding_balance):
-    """Calculate the additional planned payment for a statement.
+def remaining_planned_statement_payment(
+    card, statement, outstanding_balance, as_of=None
+):
+    """Calculate the remaining planned payment for a statement.
 
-    A recorded payment reduces both the unpaid statement balance and
-    the amount still needed to meet the original payment plan.
+    When as_of is supplied, only payments completed by that date count.
     """
     paid = max(ZERO, money(statement.actual_payment))
+
+    if as_of is not None:
+        payment_date = getattr(statement, "payment_date", None)
+        if payment_date is None or payment_date > as_of:
+            paid = ZERO
+
+    for payment in getattr(statement, "payments", []):
+        if as_of is None or payment.payment_date <= as_of:
+            paid += max(ZERO, money(payment.amount))
 
     if statement.statement_balance is not None:
         unpaid_statement = max(
@@ -295,10 +311,22 @@ def statement_payment_status(statement, outstanding_balance, today):
             "days_overdue": 0,
         }
 
+    paid = ZERO
+
+    legacy_date = getattr(statement, "payment_date", None)
+    if (
+        legacy_date is None or legacy_date <= today
+    ):
+        paid += max(ZERO, money(statement.actual_payment))
+
+    for payment in getattr(statement, "payments", []):
+        if payment.payment_date <= today:
+            paid += max(ZERO, money(payment.amount))
+
     remaining = statement_amount_due(
         outstanding_balance,
         statement.statement_balance,
-        statement.actual_payment,
+        paid,
     )
 
     if remaining == ZERO:
@@ -319,3 +347,39 @@ def statement_payment_status(statement, outstanding_balance, today):
         "remaining_balance": remaining,
         "days_overdue": days_overdue,
     }
+
+def card_payment_reservation(card, outstanding_balance, as_of):
+    """Reserve remaining planned payments from confirmed, closed statements.
+
+    Reservations are capped at the card's remaining projected debt.
+    """
+    remaining_debt = max(ZERO, money(outstanding_balance))
+    total_reserved = ZERO
+
+    statements = sorted(
+        card.statements,
+        key=lambda statement: statement.statement_close_date,
+    )
+
+    for statement in statements:
+        if statement.statement_close_date > as_of:
+            continue
+
+        if statement.statement_balance is None:
+            continue
+
+        available_debt = max(ZERO, remaining_debt - total_reserved)
+
+        if available_debt == ZERO:
+            break
+
+        reservation = remaining_planned_statement_payment(
+            card,
+            statement,
+            available_debt,
+            as_of=as_of,
+        )
+
+        total_reserved += reservation
+
+    return total_reserved.quantize(CENT)

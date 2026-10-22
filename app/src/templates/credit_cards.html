@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Credit Cards</h2>
+    <p class="text-muted">
+        Manage your credit cards and track upcoming payments.
+    </p>
+
+<h4>Add Credit Card</h4>
+<form method="POST" class="row g-3 mb-4">
+  <div class="col-md-6">
+    <label class="form-label">Card Name</label>
+    <input name="name" class="form-control" required maxlength="100">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Payment Account</label>
+    <select name="payment_account_id" class="form-select" required>
+      {% for account in accounts %}
+      <option value="{{ account.id }}">{{ account.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Current Balance ($)</label>
+    <input type="number" name="balance" class="form-control"
+           min="0" step="0.01" value="0.00" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Balance As Of</label>
+    <input type="date" name="balance_as_of" class="form-control"
+           value="{{ today.isoformat() }}" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Minimum Payment ($)</label>
+    <input type="number" name="minimum_payment" class="form-control"
+           min="0" step="0.01" value="0.00" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Extra Payment ($)</label>
+    <input type="number" name="extra_payment" class="form-control"
+           min="0" step="0.01" value="0.00">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Statement Closing Day</label>
+    <input type="number" name="statement_close_day" class="form-control"
+           min="1" max="31" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Payment Due Day</label>
+    <input type="number" name="payment_due_day" class="form-control"
+           min="1" max="31" required>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary" type="submit">Add Credit Card</button>
+  </div>
+</form>
+
+    {% if cards %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Card</th>
+                <th>Balance</th>
+                <th>Payment Account</th>
+                <th>Statement Closes</th>
+                <th>Payment Due</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for card in cards %}
+            <tr>
+                <td>{{ card.name }}</td>
+                <td>${{ "%.2f"|format(card.balance) }}</td>
+                <td>{{ card.payment_account.name }}</td>
+                <td>Day {{ card.statement_close_day }}</td>
+                <td>Day {{ card.payment_due_day }}</td>
+                <td>
+                    <a href="{{ url_for('main.edit_credit_card', card_id=card.id) }}"
+                       class="btn btn-sm btn-outline-primary">Edit</a>
+                    <a href="{{ url_for('main.credit_card_statements', card_id=card.id) }}"
+                       class="btn btn-sm btn-outline-secondary">Statements</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-info">
+        No credit cards have been added yet.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

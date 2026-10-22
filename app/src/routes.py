@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
-from .models import db, Account, Bill, Income, CreditCard
+from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
 from calendar import monthrange
 
@@ -177,6 +177,262 @@ def index():
     )
 
     return render_template('index.html', **dashboard)
+
+def validate_credit_card_form(card_id=None):
+    name = request.form.get('name', '').strip()
+
+    if not name or len(name) > 100:
+        raise ValueError("Enter a card name (maximum 100 characters).")
+
+    existing = CreditCard.query.filter_by(name=name).first()
+    if existing and existing.id != card_id:
+        raise ValueError("A credit card with that name already exists.")
+
+    account_id = int(request.form.get('payment_account_id', ''))
+    account = db.session.get(Account, account_id)
+    if account is None:
+        raise ValueError("Select a valid payment account.")
+
+    amounts = {}
+    for field in ('balance', 'minimum_payment', 'extra_payment'):
+        raw = request.form.get(field, '').strip()
+        amount = Decimal(raw or '0')
+        if (not amount.is_finite() or amount < 0
+                or amount != amount.quantize(Decimal('0.01'))
+                or amount > Decimal('9999999999.99')):
+            raise ValueError(f"Invalid amount for {field}.")
+        amounts[field] = amount
+
+    close_day = int(request.form.get('statement_close_day', ''))
+    due_day = int(request.form.get('payment_due_day', ''))
+    if not (1 <= close_day <= 31 and 1 <= due_day <= 31):
+        raise ValueError("Statement and payment days must be between 1 and 31.")
+
+    balance_as_of = date.fromisoformat(
+        request.form.get('balance_as_of', '')
+    )
+    if balance_as_of > date.today():
+        raise ValueError("Balance date cannot be in the future.")
+
+    return dict(
+        name=name,
+        payment_account_id=account.id,
+        balance_as_of=balance_as_of,
+        statement_close_day=close_day,
+        payment_due_day=due_day,
+        **amounts
+    )
+
+
+@bp.route('/credit-cards', methods=['GET', 'POST'])
+def credit_cards():
+    if request.method == 'POST':
+        try:
+            card_data = validate_credit_card_form()
+            card = CreditCard(**card_data)
+            db.session.add(card)
+            db.session.commit()
+            flash(f"Credit card '{card.name}' added successfully.", 'success')
+        except (ValueError, InvalidOperation) as error:
+            db.session.rollback()
+            flash(str(error) or "Invalid credit card details.", 'danger')
+        return redirect(url_for('main.credit_cards'))
+
+    cards = CreditCard.query.order_by(CreditCard.name).all()
+    accounts = Account.query.order_by(Account.name).all()
+    return render_template(
+        'credit_cards.html',
+        cards=cards,
+        accounts=accounts,
+        today=date.today()
+    )
+
+
+@bp.route('/credit-cards/<int:card_id>/edit', methods=['GET', 'POST'])
+def edit_credit_card(card_id):
+    card = CreditCard.query.get_or_404(card_id)
+
+    if request.method == 'POST':
+        try:
+            changes = validate_credit_card_form(card_id=card.id)
+            for field, value in changes.items():
+                setattr(card, field, value)
+            db.session.commit()
+            flash("Credit card updated successfully.", "success")
+            return redirect(url_for('main.credit_cards'))
+        except (ValueError, InvalidOperation) as error:
+            db.session.rollback()
+            flash(str(error) or "Invalid card details.", "danger")
+
+    accounts = Account.query.order_by(Account.name).all()
+
+    return render_template(
+        'edit_credit_card.html',
+        card=card,
+        accounts=accounts
+    )
+
+
+def validate_credit_card_statement(card):
+    try:
+        close_date = date.fromisoformat(
+            request.form.get('statement_close_date', '')
+        )
+        due_date = date.fromisoformat(
+            request.form.get('payment_due_date', '')
+        )
+        balance = Decimal(
+            request.form.get('statement_balance', '')
+        )
+    except (ValueError, InvalidOperation):
+        raise ValueError("Enter valid dates and a statement balance.")
+
+    if due_date <= close_date:
+        raise ValueError("Payment due date must follow the closing date.")
+
+    if close_date > date.today():
+        raise ValueError("Statement closing date cannot be in the future.")
+
+    if (not balance.is_finite() or balance < 0
+            or balance > Decimal('9999999999.99')
+            or balance != balance.quantize(Decimal('0.01'))):
+        raise ValueError("Enter a valid nonnegative statement balance.")
+
+    existing = CreditCardStatement.query.filter_by(
+        credit_card_id=card.id,
+        statement_close_date=close_date
+    ).first()
+
+    if existing:
+        raise ValueError("A statement already exists for that closing date.")
+
+    return dict(
+        credit_card_id=card.id,
+        statement_close_date=close_date,
+        payment_due_date=due_date,
+        statement_balance=balance
+    )
+
+
+def validate_credit_card_payment(statement, form):
+    """Validate an individual payment against the statement balance."""
+    try:
+        amount = Decimal(form.get('amount', ''))
+        payment_date = date.fromisoformat(form.get('payment_date', ''))
+    except (ValueError, InvalidOperation, TypeError):
+        raise ValueError("Enter a valid payment amount and date.")
+
+    if (not amount.is_finite()
+            or amount <= 0
+            or amount > Decimal('9999999999.99')
+            or amount != amount.quantize(Decimal('0.01'))):
+        raise ValueError("Enter a positive payment amount with up to two decimals.")
+
+    if payment_date > date.today():
+        raise ValueError("Payment date cannot be in the future.")
+
+    if statement.statement_balance is None:
+        raise ValueError("Confirm the statement balance before recording payments.")
+
+    paid = max(Decimal('0'), statement.actual_payment or Decimal('0'))
+
+    for payment in statement.payments:
+        paid += max(Decimal('0'), payment.amount)
+
+    remaining = max(Decimal('0'), statement.statement_balance - paid)
+
+    if amount > remaining:
+        raise ValueError(
+            f"Payment exceeds the remaining statement balance of ${remaining:.2f}."
+        )
+
+    return dict(
+        statement_id=statement.id,
+        amount=amount,
+        payment_date=payment_date,
+    )
+
+
+@bp.route('/credit-cards/<int:card_id>/statements', methods=['GET', 'POST'])
+def credit_card_statements(card_id):
+    card = CreditCard.query.get_or_404(card_id)
+
+    if request.method == 'POST':
+        try:
+            data = validate_credit_card_statement(card)
+            statement = CreditCardStatement(**data)
+            db.session.add(statement)
+            db.session.commit()
+            flash("Credit card statement recorded successfully.", "success")
+            return redirect(url_for('main.credit_card_statements', card_id=card.id))
+        except (ValueError, InvalidOperation) as error:
+            db.session.rollback()
+            flash(str(error) or "Invalid statement details.", "danger")
+
+    statements = (
+        CreditCardStatement.query
+        .filter_by(credit_card_id=card.id)
+        .order_by(CreditCardStatement.statement_close_date.desc())
+        .all()
+    )
+
+    payment_totals = {}
+    remaining_balances = {}
+
+    for statement in statements:
+        total_paid = max(
+            Decimal('0'),
+            statement.actual_payment or Decimal('0')
+        )
+
+        for payment in statement.payments:
+            total_paid += max(Decimal('0'), payment.amount)
+
+        payment_totals[statement.id] = total_paid
+
+        if statement.statement_balance is not None:
+            remaining_balances[statement.id] = max(
+                Decimal('0'),
+                statement.statement_balance - total_paid
+            )
+        else:
+            remaining_balances[statement.id] = None
+
+    return render_template(
+        'credit_card_statements.html',
+        card=card,
+        statements=statements,
+        payment_totals=payment_totals,
+        remaining_balances=remaining_balances,
+        today=date.today()
+    )
+
+
+@bp.route(
+    '/credit-cards/<int:card_id>/statements/<int:statement_id>/payments',
+    methods=['POST']
+)
+def record_credit_card_payment(card_id, statement_id):
+    card = CreditCard.query.get_or_404(card_id)
+
+    statement = CreditCardStatement.query.filter_by(
+        id=statement_id,
+        credit_card_id=card.id,
+    ).first_or_404()
+
+    try:
+        data = validate_credit_card_payment(statement, request.form)
+        db.session.add(CreditCardPayment(**data))
+        db.session.commit()
+        flash("Credit card payment recorded successfully.", "success")
+    except (ValueError, InvalidOperation) as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+
+    return redirect(
+        url_for('main.credit_card_statements', card_id=card.id)
+    )
+
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():

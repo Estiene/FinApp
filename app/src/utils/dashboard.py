@@ -8,6 +8,7 @@ from .credit_cards import (
     recorded_payments_for_account,
     projected_card_balance,
     minimum_plus_extra_payment,
+    card_payment_reservation,
 )
 
 
@@ -172,10 +173,25 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
                     end_date=today,
                 )
 
+        reserved = ZERO
+
+        for card in credit_cards:
+            if card.payment_account_id != getattr(account, "id", None):
+                continue
+
+            projected_debt = projected_card_balance(card, today)
+            reserved += card_payment_reservation(
+                card,
+                projected_debt,
+                as_of=today,
+            )
+
         account_summaries.append({
             "account": account,
             "balance_as_of": balance_as_of,
             "projected_balance": projected_balance.quantize(CENT),
+            "reserved_for_credit_cards": reserved.quantize(CENT),
+            "spendable_balance": (projected_balance - reserved).quantize(CENT),
         })
 
     credit_card_summaries = []

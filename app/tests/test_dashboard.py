@@ -93,6 +93,170 @@ class DashboardProjectionTests(unittest.TestCase):
             Decimal("1900.00"),
         )
 
+    def test_credit_card_reservation_reduces_spendable_not_projected_balance(self):
+        today = date(2026, 10, 21)
+
+        acct = account(
+            "Checking",
+            starting_balance="2500.00",
+            balance_as_of=today,
+        )
+        acct.id = 1
+
+        statement = SimpleNamespace(
+            statement_close_date=date(2026, 10, 15),
+            payment_due_date=date(2026, 11, 10),
+            statement_balance=Decimal("500.00"),
+            planned_payment=None,
+            actual_payment=None,
+            payment_date=None,
+        )
+
+        card = SimpleNamespace(
+            balance=Decimal("860.00"),
+            balance_as_of=today,
+            minimum_payment=Decimal("40.00"),
+            extra_payment=Decimal("100.00"),
+            payment_account_id=1,
+            statements=[statement],
+            bills=[],
+        )
+
+        result = build_dashboard_data(
+            [acct], today=today, credit_cards=[card]
+        )
+        summary = result["account_summaries"][0]
+
+        self.assertEqual(
+            summary["projected_balance"], Decimal("2500.00")
+        )
+        self.assertEqual(
+            summary["reserved_for_credit_cards"], Decimal("140.00")
+        )
+        self.assertEqual(
+            summary["spendable_balance"], Decimal("2360.00")
+        )
+
+    def test_multiple_cards_reserve_from_same_checking_account(self):
+        today = date(2026, 10, 21)
+
+        acct = account(
+            "Checking",
+            starting_balance="2500.00",
+            balance_as_of=today,
+        )
+        acct.id = 1
+
+        def make_card(balance, minimum, extra):
+            statement = SimpleNamespace(
+                statement_close_date=date(2026, 10, 15),
+                payment_due_date=date(2026, 11, 10),
+                statement_balance=Decimal(balance),
+                planned_payment=None,
+                actual_payment=None,
+                payment_date=None,
+            )
+            return SimpleNamespace(
+                balance=Decimal(balance),
+                balance_as_of=today,
+                minimum_payment=Decimal(minimum),
+                extra_payment=Decimal(extra),
+                payment_account_id=1,
+                statements=[statement],
+                bills=[],
+            )
+
+        cards = [
+            make_card("860.00", "40.00", "100.00"),
+            make_card("300.00", "25.00", "50.00"),
+        ]
+
+        result = build_dashboard_data(
+            [acct], today=today, credit_cards=cards
+        )
+        summary = result["account_summaries"][0]
+
+        self.assertEqual(
+            summary["projected_balance"], Decimal("2500.00")
+        )
+        self.assertEqual(
+            summary["reserved_for_credit_cards"], Decimal("215.00")
+        )
+        self.assertEqual(
+            summary["spendable_balance"], Decimal("2285.00")
+        )
+
+    def test_reservation_only_affects_designated_account(self):
+        today = date(2026, 10, 21)
+        checking = account("Checking", starting_balance="2500.00", balance_as_of=today)
+        savings = account("Savings", starting_balance="1000.00", balance_as_of=today)
+        checking.id = 1
+        savings.id = 2
+
+        statement = SimpleNamespace(
+            statement_close_date=date(2026, 10, 15),
+            payment_due_date=date(2026, 11, 10),
+            statement_balance=Decimal("500.00"),
+            planned_payment=None,
+            actual_payment=None,
+            payment_date=None,
+        )
+        card = SimpleNamespace(
+            balance=Decimal("860.00"),
+            balance_as_of=today,
+            minimum_payment=Decimal("40.00"),
+            extra_payment=Decimal("100.00"),
+            payment_account_id=1,
+            statements=[statement],
+            bills=[],
+        )
+
+        result = build_dashboard_data(
+            [checking, savings], today=today, credit_cards=[card]
+        )
+        first, second = result["account_summaries"]
+
+        self.assertEqual(first["reserved_for_credit_cards"], Decimal("140.00"))
+        self.assertEqual(first["spendable_balance"], Decimal("2360.00"))
+        self.assertEqual(second["reserved_for_credit_cards"], Decimal("0.00"))
+        self.assertEqual(second["spendable_balance"], Decimal("1000.00"))
+
+    def test_completed_statement_payment_is_not_reserved_again(self):
+        today = date(2026, 10, 21)
+        checking = account(
+            "Checking",
+            starting_balance="2500.00",
+            balance_as_of=date(2026, 10, 1),
+        )
+        checking.id = 1
+
+        statement = SimpleNamespace(
+            statement_close_date=date(2026, 9, 15),
+            payment_due_date=date(2026, 10, 10),
+            statement_balance=Decimal("500.00"),
+            planned_payment=None,
+            actual_payment=Decimal("140.00"),
+            payment_date=date(2026, 10, 15),
+        )
+        card = SimpleNamespace(
+            balance=Decimal("1000.00"),
+            balance_as_of=date(2026, 10, 1),
+            minimum_payment=Decimal("40.00"),
+            extra_payment=Decimal("100.00"),
+            payment_account_id=1,
+            statements=[statement],
+            bills=[],
+        )
+
+        result = build_dashboard_data(
+            [checking], today=today, credit_cards=[card]
+        )
+        summary = result["account_summaries"][0]
+
+        self.assertEqual(summary["projected_balance"], Decimal("2360.00"))
+        self.assertEqual(summary["reserved_for_credit_cards"], Decimal("0.00"))
+        self.assertEqual(summary["spendable_balance"], Decimal("2360.00"))
+
     def test_balance_snapshot_date_is_not_counted_twice(self):
         acct = account(
             "Checking",

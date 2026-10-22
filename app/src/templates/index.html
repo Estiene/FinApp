@@ -54,6 +54,25 @@
               </div>
             </div>
 
+            <div class="border-top pt-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-body-secondary">Reserved for credit cards</span>
+                <span class="fw-semibold">
+                  ${{ '{:,.2f}'.format(summary.reserved_for_credit_cards) }}
+                </span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Available to spend</span>
+                <span class="h4 mb-0 {% if summary.spendable_balance < 0 %}text-danger{% elif summary.spendable_balance > 0 %}text-success{% endif %}">
+                  ${{ '{:,.2f}'.format(summary.spendable_balance) }}
+                </span>
+              </div>
+              <div class="form-text mt-2">
+                Credit card reservations reduce available spending money,
+                not the projected checking balance.
+              </div>
+            </div>
+
             <form method="post" action="{{ url_for('main.update_account_balance', account_id=summary.account.id) }}" class="border-top pt-3">
               {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <div class="row g-2 align-items-end">

@@ -134,10 +134,36 @@ class CreditCardStatement(db.Model):
         back_populates='statements',
     )
 
+    payments = db.relationship(
+        'CreditCardPayment',
+        back_populates='statement',
+        cascade='all, delete-orphan',
+    )
+
     __table_args__ = (
         db.UniqueConstraint(
             'credit_card_id',
             'statement_close_date',
             name='uq_credit_card_statement_cycle',
         ),
+    )
+
+
+class CreditCardPayment(db.Model):
+    __tablename__ = 'credit_card_payments'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    statement_id = db.Column(
+        db.Integer,
+        db.ForeignKey('credit_card_statements.id'),
+        nullable=False,
+    )
+
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    payment_date = db.Column(db.Date, nullable=False)
+
+    statement = db.relationship(
+        'CreditCardStatement',
+        back_populates='payments',
     )
