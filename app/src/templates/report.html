@@ -75,6 +75,7 @@
           <th>Date</th>
           <th>Income</th>
           <th>Bills</th>
+          <th>Credit Card Charges <small class="text-muted">(not deducted)</small></th>
           <th>Credit Card Payments</th>
           <th>Net</th>
           <th>Balance</th>
@@ -86,6 +87,22 @@
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
           <td>${{ '%.2f'|format(d.income) }}</td>
           <td>${{ '%.2f'|format(d.bills) }}</td>
+          <td>
+            {% if d.charge_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View credit card charges for {{ d.date }}">
+                ${{ '%.2f'|format(d.credit_card_charges) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for charge in d.charge_details %}
+                <li>{{ charge.bill }} &mdash; {{ charge.card }}: ${{ '%.2f'|format(charge.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.credit_card_charges) }}
+            {% endif %}
+          </td>
           <td>${{ '%.2f'|format(d.credit_card_payments) }}</td>
           <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.net) }}
@@ -96,6 +113,17 @@
         </tr>
         {% endfor %}
       </tbody>
+      <tfoot class="table-group-divider fw-bold">
+        <tr>
+          <th scope="row">Total</th>
+          <td>${{ '%.2f'|format(section.totals.income) }}</td>
+          <td>${{ '%.2f'|format(section.totals.bills) }}</td>
+          <td>${{ '%.2f'|format(section.totals.credit_card_charges) }}</td>
+          <td>${{ '%.2f'|format(section.totals.credit_card_payments) }}</td>
+          <td>${{ '%.2f'|format(section.totals.net) }}</td>
+          <td>${{ '%.2f'|format(section.days[-1].balance) }}</td>
+        </tr>
+      </tfoot>
     </table>
   </details>
   {% endfor %}
