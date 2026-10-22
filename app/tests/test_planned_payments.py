@@ -319,6 +319,43 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Bill.query.count(), 0)
 
+    def test_cash_flow_shows_card_charges_without_reducing_balance(self):
+        from src.models import Account, Bill, CreditCard
+        checking = Account(name="Checking")
+        self.db.session.add(checking)
+        self.db.session.flush()
+        visa = CreditCard(
+            name="Visa", payment_account_id=checking.id,
+            balance=Decimal("500"), balance_as_of=date(2026, 10, 1),
+            statement_close_day=15, payment_due_day=10,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+            extra_payment_day=8, bill_payment_timing="days_before_due",
+            bill_payment_days_before=3,
+        )
+        self.db.session.add(visa)
+        self.db.session.flush()
+        self.db.session.add_all([
+            Bill(name="Electric", owner="Test", due_day=2,
+                 amount=Decimal("100"), account_id=checking.id,
+                 credit_card_id=visa.id),
+            Bill(name="Internet", owner="Test", due_day=2,
+                 amount=Decimal("40"), account_id=checking.id,
+                 credit_card_id=visa.id),
+        ])
+        self.db.session.commit()
+        html = self.app.test_client().get(
+            f"/report?year=2026&month=11&starting_balance_{checking.id}=2000"
+        ).get_data(as_text=True)
+        self.assertIn("Credit Card Charges", html)
+        self.assertIn("View credit card charges for 2026-11-02", html)
+        self.assertIn("Electric", html)
+        self.assertIn("Internet", html)
+        self.assertIn("Visa", html)
+        self.assertIn("$140.00", html)
+        self.assertIn("Total", html)
+        self.assertIn("Ending: $1785.00", html)
+        self.assertIn("$-215.00", html)
+
     def test_cash_flow_only_deducts_payments_from_linked_account(self):
         from src.models import Account, CreditCard
         checking = Account(name="Checking")
