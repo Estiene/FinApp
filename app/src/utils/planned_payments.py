@@ -93,10 +93,14 @@ def planned_card_payments(card, start_date, end_date):
         if start_date <= bill_date <= end_date and bill_amount > ZERO:
             events.append(dict(date=bill_date, kind="bill_related",
                                amount=bill_amount, card_id=card.id))
+        # Bill-related payments count toward the minimum only when
+        # scheduled after statement close and no later than the due date.
         minimum = max(ZERO, money(card.minimum_payment))
-        if start_date <= due <= end_date and minimum > ZERO:
+        qualifying_bill_amount = bill_amount if close < bill_date <= due else ZERO
+        remaining_minimum = max(ZERO, minimum - qualifying_bill_amount)
+        if start_date <= due <= end_date and remaining_minimum > ZERO:
             events.append(dict(date=due, kind="minimum",
-                               amount=minimum, card_id=card.id))
+                               amount=remaining_minimum, card_id=card.id))
         extra = max(ZERO, money(card.extra_payment))
         extra_day = getattr(card, "extra_payment_day", None)
         if extra_day is None:
