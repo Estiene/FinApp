@@ -309,6 +309,26 @@ def credit_cards():
     )
 
 
+@bp.route('/credit-cards/<int:card_id>/active', methods=['POST'])
+def set_credit_card_active(card_id):
+    """Archive a paid-off card without deleting its financial history."""
+    card = CreditCard.query.get_or_404(card_id)
+    action = request.form.get('action', '')
+    if action not in ('activate', 'deactivate'):
+        abort(400)
+    if action == 'deactivate':
+        if card.balance != Decimal('0') or card.bills:
+            flash("Pay off the card and move its recurring bills before deactivating it.", "danger")
+            return redirect(url_for('main.credit_cards'))
+        card.is_active = False
+        flash(f"Credit card '{card.name}' deactivated; history was preserved.", "success")
+    else:
+        card.is_active = True
+        flash(f"Credit card '{card.name}' reactivated.", "success")
+    db.session.commit()
+    return redirect(url_for('main.credit_cards'))
+
+
 @bp.route('/credit-cards/<int:card_id>/edit', methods=['GET', 'POST'])
 def edit_credit_card(card_id):
     card = CreditCard.query.get_or_404(card_id)
