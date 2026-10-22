@@ -150,6 +150,12 @@
             <div class="card-body">
               <h3 class="h5 mb-3">{{ summary.card.name }}</h3>
 
+              {% if summary.statement_reminder.status in ('missing', 'stale', 'overdue', 'upcoming') %}
+                <div class="alert {% if summary.statement_reminder.status == 'overdue' %}alert-danger{% else %}alert-warning{% endif %} py-2" role="status">
+                  {{ summary.statement_reminder.message }}
+                  <a href="{{ url_for('main.credit_card_statements', card_id=summary.card.id) }}">Review statements</a>
+                </div>
+              {% endif %}
               <div class="small text-body-secondary">
                 Projected card balance
               </div>
