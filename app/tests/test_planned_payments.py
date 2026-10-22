@@ -356,6 +356,45 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertIn("Ending: $1785.00", html)
         self.assertIn("$-215.00", html)
 
+    def test_cash_flow_expands_income_bills_and_payment_types(self):
+        from src.models import Account, Bill, CreditCard, Income
+        checking = Account(name="Checking")
+        self.db.session.add(checking)
+        self.db.session.flush()
+        visa = CreditCard(
+            name="Visa", payment_account_id=checking.id,
+            balance=Decimal("500"), balance_as_of=date(2026, 10, 1),
+            statement_close_day=15, payment_due_day=10,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+            extra_payment_day=8, bill_payment_timing="days_before_due",
+            bill_payment_days_before=3,
+        )
+        self.db.session.add(visa)
+        self.db.session.flush()
+        self.db.session.add_all([
+            Bill(name="Rent", owner="Test", due_day=4,
+                 amount=Decimal("300"), account_id=checking.id),
+            Bill(name="Electric", owner="Test", due_day=2,
+                 amount=Decimal("100"), account_id=checking.id,
+                 credit_card_id=visa.id),
+            Income(name="Paycheck", amount=Decimal("1000"),
+                   frequency="monthly", next_pay=date(2026, 10, 5),
+                   account_id=checking.id),
+        ])
+        self.db.session.commit()
+        html = self.app.test_client().get(
+            f"/report?year=2026&month=11&starting_balance_{checking.id}=2000"
+        ).get_data(as_text=True)
+        self.assertIn("View income for 2026-11-05", html)
+        self.assertIn("Paycheck: $1000.00", html)
+        self.assertIn("View bills for 2026-11-04", html)
+        self.assertIn("Rent: $300.00", html)
+        self.assertIn("View credit card payments for 2026-11-07", html)
+        self.assertIn("Visa &mdash; Bill-related: $100.00", html)
+        self.assertIn("Visa &mdash; Extra: $50.00", html)
+        self.assertIn("Visa &mdash; Minimum: $25.00", html)
+        self.assertIn("Ending: $2525.00", html)
+
     def test_cash_flow_only_deducts_payments_from_linked_account(self):
         from src.models import Account, CreditCard
         checking = Account(name="Checking")
