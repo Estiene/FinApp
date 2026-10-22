@@ -54,6 +54,25 @@
               </div>
             </div>
 
+            <div class="border-top pt-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-body-secondary">Reserved for credit cards</span>
+                <span class="fw-semibold">
+                  ${{ '{:,.2f}'.format(summary.reserved_for_credit_cards) }}
+                </span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Available to spend</span>
+                <span class="h4 mb-0 {% if summary.spendable_balance < 0 %}text-danger{% elif summary.spendable_balance > 0 %}text-success{% endif %}">
+                  ${{ '{:,.2f}'.format(summary.spendable_balance) }}
+                </span>
+              </div>
+              <div class="form-text mt-2">
+                Credit card reservations reduce available spending money,
+                not the projected checking balance.
+              </div>
+            </div>
+
             <form method="post" action="{{ url_for('main.update_account_balance', account_id=summary.account.id) }}" class="border-top pt-3">
               {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <div class="row g-2 align-items-end">
@@ -79,5 +98,85 @@
       <p class="mb-2">Create an account before adding income or bills to your dashboard.</p>
       <a href="{{ url_for('main.accounts') }}" class="btn btn-primary">Create an account</a>
     </div>
+  {% endif %}
+  <div class="d-flex justify-content-between align-items-center mt-5 mb-3">
+    <div>
+      <h2 class="h4 mb-1">Credit Cards</h2>
+      <p class="text-body-secondary mb-0">
+        Projected balances and suggested payments.
+      </p>
+    </div>
+  </div>
+
+  {% if credit_card_summaries %}
+    <div class="row g-3">
+      {% for summary in credit_card_summaries %}
+        <div class="col-xl-6">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <h3 class="h5 mb-3">{{ summary.card.name }}</h3>
+
+              <div class="small text-body-secondary">
+                Projected card balance
+              </div>
+              <div class="h3 mb-3">
+                ${{ '{:,.2f}'.format(summary.projected_balance) }}
+              </div>
+
+              <div class="row g-3">
+                <div class="col-6">
+                  <div class="small text-body-secondary">
+                    Minimum payment
+                  </div>
+                  <div class="fw-semibold">
+                    ${{ '{:,.2f}'.format(summary.card.minimum_payment) }}
+                  </div>
+                </div>
+
+                <div class="col-6">
+                  <div class="small text-body-secondary">
+                    Extra payment
+                  </div>
+                  <div class="fw-semibold">
+                    ${{ '{:,.2f}'.format(summary.card.extra_payment) }}
+                  </div>
+                </div>
+
+                <div class="col-6">
+                  <div class="small text-body-secondary">
+                    Suggested payment
+                  </div>
+                  <div class="fw-semibold text-primary">
+                    ${{ '{:,.2f}'.format(summary.suggested_payment) }}
+                  </div>
+                </div>
+
+                <div class="col-6">
+                  <div class="small text-body-secondary">
+                    Paid from
+                  </div>
+                  <div class="fw-semibold">
+                    {{ summary.card.payment_account.name }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="small text-body-secondary mt-3">
+                Balance snapshot:
+                {{ summary.card.balance_as_of.strftime('%b %-d, %Y') }}
+              </div>
+              <div class="form-text">
+                Suggested payments are estimates and are not deducted
+                from checking until recorded as completed.
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-body-secondary">
+      No credit cards have been added yet.
+    </p>
   {% endif %}
 {% endblock %}

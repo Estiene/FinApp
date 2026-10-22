@@ -47,6 +47,10 @@
             <a class="nav-link{% if request.endpoint in ('main.accounts', 'main.update_account_balance') %} active{% endif %}"
                href="{{ url_for('main.accounts') }}">Accounts</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link{% if request.endpoint == 'main.credit_cards' %} active{% endif %}"
+               href="{{ url_for('main.credit_cards') }}">Credit Cards</a>
+          </li>
         </ul>
       </div>
     </div>

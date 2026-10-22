@@ -40,7 +40,17 @@ class Bill(db.Model):
 
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
     account = db.relationship('Account', back_populates='bills')
-
+    # Optional credit card used to pay this recurring bill.
+    # NULL means the bill is paid directly from its assigned bank account.
+    credit_card_id = db.Column(
+        db.Integer,
+        db.ForeignKey('credit_cards.id'),
+        nullable=True,
+    )
+    credit_card = db.relationship(
+        'CreditCard',
+        back_populates='bills',
+    )
 
 class Income(db.Model):
     __tablename__ = 'incomes'
@@ -55,3 +65,105 @@ class Income(db.Model):
 
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
     account = db.relationship('Account', back_populates='incomes')
+
+class CreditCard(db.Model):
+    __tablename__ = 'credit_cards'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+
+    # Outstanding card debt as of the snapshot date.
+    balance = db.Column(
+        db.Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+    balance_as_of = db.Column(
+        db.Date, nullable=False, default=date.today
+    )
+
+    statement_close_day = db.Column(db.Integer, nullable=False)
+    payment_due_day = db.Column(db.Integer, nullable=False)
+
+    minimum_payment = db.Column(
+        db.Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+    extra_payment = db.Column(
+        db.Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+
+    payment_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('accounts.id'),
+        nullable=False,
+    )
+    payment_account = db.relationship('Account')
+    statements = db.relationship(
+        'CreditCardStatement',
+        back_populates='credit_card',
+        cascade='all, delete-orphan',
+    )
+    bills = db.relationship(
+        'Bill',
+        back_populates='credit_card',
+    )
+class CreditCardStatement(db.Model):
+    __tablename__ = 'credit_card_statements'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    credit_card_id = db.Column(
+        db.Integer,
+        db.ForeignKey('credit_cards.id'),
+        nullable=False,
+    )
+
+    statement_close_date = db.Column(db.Date, nullable=False)
+    payment_due_date = db.Column(db.Date, nullable=False)
+
+    # Confirmed balance from the card issuer.
+    statement_balance = db.Column(db.Numeric(12, 2), nullable=True)
+
+    # Optional override of the automatically suggested payment.
+    planned_payment = db.Column(db.Numeric(12, 2), nullable=True)
+
+    # Completed payment information.
+    actual_payment = db.Column(db.Numeric(12, 2), nullable=True)
+    payment_date = db.Column(db.Date, nullable=True)
+
+    credit_card = db.relationship(
+        'CreditCard',
+        back_populates='statements',
+    )
+
+    payments = db.relationship(
+        'CreditCardPayment',
+        back_populates='statement',
+        cascade='all, delete-orphan',
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'credit_card_id',
+            'statement_close_date',
+            name='uq_credit_card_statement_cycle',
+        ),
+    )
+
+
+class CreditCardPayment(db.Model):
+    __tablename__ = 'credit_card_payments'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    statement_id = db.Column(
+        db.Integer,
+        db.ForeignKey('credit_card_statements.id'),
+        nullable=False,
+    )
+
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    payment_date = db.Column(db.Date, nullable=False)
+
+    statement = db.relationship(
+        'CreditCardStatement',
+        back_populates='payments',
+    )

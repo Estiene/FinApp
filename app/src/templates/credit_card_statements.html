@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Statements — {{ card.name }}</h2>
+  <p>
+    <a href="{{ url_for('main.credit_cards') }}"
+       class="btn btn-outline-secondary btn-sm">
+      Back to Credit Cards
+    </a>
+  </p>
+
+<h4>Record New Statement</h4>
+<form method="POST" class="row g-3 mb-4">
+  <div class="col-md-4">
+    <label class="form-label">Statement Closing Date</label>
+    <input type="date" name="statement_close_date"
+           class="form-control" required>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Payment Due Date</label>
+    <input type="date" name="payment_due_date"
+           class="form-control" required>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Statement Balance ($)</label>
+    <input type="number" name="statement_balance"
+           class="form-control" min="0" step="0.01" required>
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      Record Statement
+    </button>
+  </div>
+</form>
+
+  {% if statements %}
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Closing Date</th>
+        <th>Payment Due</th>
+        <th>Statement Balance</th>
+        <th>Planned Payment</th>
+        <th>Total Paid</th>
+        <th>Remaining Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for statement in statements %}
+      <tr>
+        <td>{{ statement.statement_close_date }}</td>
+        <td>{{ statement.payment_due_date }}</td>
+        <td>
+          {% if statement.statement_balance is not none %}
+            ${{ "%.2f"|format(statement.statement_balance) }}
+          {% else %}Not confirmed{% endif %}
+        </td>
+        <td>
+          {% if statement.planned_payment is not none %}
+            ${{ "%.2f"|format(statement.planned_payment) }}
+          {% else %}Automatic{% endif %}
+        </td>
+        <td>
+          ${{ "%.2f"|format(payment_totals[statement.id]) }}
+        </td>
+        <td>
+          {% if remaining_balances[statement.id] is not none %}
+            ${{ "%.2f"|format(remaining_balances[statement.id]) }}
+          {% else %}
+            Not confirmed
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="6">
+          <h6 class="mt-2">Record Payment</h6>
+          {% if statement.statement_balance is not none
+                and remaining_balances[statement.id] > 0 %}
+          <form method="POST"
+                action="{{ url_for(
+                    'main.record_credit_card_payment',
+                    card_id=card.id,
+                    statement_id=statement.id
+                ) }}"
+                class="row g-2 mb-3">
+            <div class="col-md-4">
+              <label class="form-label">Amount ($)</label>
+              <input type="number" name="amount"
+                     class="form-control"
+                     min="0.01" max="{{ remaining_balances[statement.id] }}"
+                     step="0.01" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Payment Date</label>
+              <input type="date" name="payment_date"
+                     class="form-control"
+                     value="{{ today.isoformat() }}" required>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary">
+                Record Payment
+              </button>
+            </div>
+          </form>
+          {% elif statement.statement_balance is none %}
+          <p class="text-muted">Confirm the statement balance before recording payments.</p>
+          {% else %}
+          <p class="text-success">Statement fully paid.</p>
+          {% endif %}
+
+          <h6>Payment History</h6>
+          {% if statement.payments %}
+          <table class="table table-sm">
+            <thead>
+              <tr><th>Date</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              {% for payment in statement.payments|sort(attribute='payment_date') %}
+              <tr>
+                <td>{{ payment.payment_date }}</td>
+                <td>${{ "%.2f"|format(payment.amount) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">No individual payments recorded yet.</p>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-info">
+    No statements have been recorded for this card yet.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

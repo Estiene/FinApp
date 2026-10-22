@@ -4,6 +4,13 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
 from dateutil.relativedelta import relativedelta
+from .credit_cards import (
+    recorded_payments_for_account,
+    projected_card_balance,
+    minimum_plus_extra_payment,
+    card_payment_reservation,
+)
+
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -107,7 +114,7 @@ def bill_dates(bill, start_date, end_date):
     return dates
 
 
-def build_dashboard_data(accounts, today=None):
+def build_dashboard_data(accounts, today=None, credit_cards=None):
     """Calculate current-month totals and each account's projected balance.
 
     Account starting balances are snapshots at the end of balance_as_of. Events
@@ -120,30 +127,88 @@ def build_dashboard_data(accounts, today=None):
     total_income = ZERO
     total_bills = ZERO
     account_summaries = []
+    credit_cards = credit_cards or []
 
     for account in accounts:
         for income in account.incomes:
             amount = _money(income.amount)
-            total_income += amount * len(income_dates(income, month_start, month_end))
+            total_income += amount * len(
+                income_dates(income, month_start, month_end)
+            )
+
         for bill in account.bills:
             amount = _money(bill.amount)
-            total_bills += amount * len(bill_dates(bill, month_start, month_end))
+            total_bills += amount * len(
+                bill_dates(bill, month_start, month_end)
+            )
 
         balance_as_of = account.balance_as_of or today
         projected_balance = _money(account.starting_balance)
+
         if balance_as_of < today:
             projection_start = balance_as_of + timedelta(days=1)
+
             for income in account.incomes:
-                count = len(income_dates(income, projection_start, today))
+                count = len(
+                    income_dates(income, projection_start, today)
+                )
                 projected_balance += _money(income.amount) * count
+
             for bill in account.bills:
-                count = len(bill_dates(bill, projection_start, today))
+                # Card purchases do not directly reduce checking.
+                if getattr(bill, "credit_card_id", None) is not None:
+                    continue
+
+                count = len(
+                    bill_dates(bill, projection_start, today)
+                )
                 projected_balance -= _money(bill.amount) * count
+                        # Subtract completed credit card payments after the balance snapshot.
+            # Subtract completed card payments after the balance snapshot.
+            if credit_cards:
+                projected_balance -= recorded_payments_for_account(
+                    credit_cards=credit_cards,
+                    account_id=account.id,
+                    start_date=projection_start,
+                    end_date=today,
+                )
+
+        reserved = ZERO
+
+        for card in credit_cards:
+            if card.payment_account_id != getattr(account, "id", None):
+                continue
+
+            projected_debt = projected_card_balance(card, today)
+            reserved += card_payment_reservation(
+                card,
+                projected_debt,
+                as_of=today,
+            )
 
         account_summaries.append({
             "account": account,
             "balance_as_of": balance_as_of,
             "projected_balance": projected_balance.quantize(CENT),
+            "reserved_for_credit_cards": reserved.quantize(CENT),
+            "spendable_balance": (projected_balance - reserved).quantize(CENT),
+        })
+
+    credit_card_summaries = []
+
+    for card in credit_cards:
+        projected_debt = projected_card_balance(card, today)
+
+        suggested = minimum_plus_extra_payment(
+            outstanding_balance=projected_debt,
+            minimum_payment=card.minimum_payment,
+            extra_payment=card.extra_payment,
+        )
+
+        credit_card_summaries.append({
+            "card": card,
+            "projected_balance": projected_debt,
+            "suggested_payment": suggested,
         })
 
     return {
@@ -153,4 +218,5 @@ def build_dashboard_data(accounts, today=None):
         "total_income": total_income.quantize(CENT),
         "total_bills": total_bills.quantize(CENT),
         "account_summaries": account_summaries,
+        "credit_card_summaries": credit_card_summaries,
     }
