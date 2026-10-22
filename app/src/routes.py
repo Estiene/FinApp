@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
+from .utils.credit_cards import projected_card_balance
 from .utils.planned_payments import planned_card_payments
 from calendar import monthrange
 
@@ -317,7 +318,7 @@ def set_credit_card_active(card_id):
     if action not in ('activate', 'deactivate'):
         abort(400)
     if action == 'deactivate':
-        if card.balance != Decimal('0') or card.bills:
+        if projected_card_balance(card, date.today()) != Decimal('0') or card.bills:
             flash("Pay off the card and move its recurring bills before deactivating it.", "danger")
             return redirect(url_for('main.credit_cards'))
         card.is_active = False
