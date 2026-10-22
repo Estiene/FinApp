@@ -73,6 +73,40 @@
               </div>
             </div>
 
+            <div class="border-top pt-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="text-body-secondary">Lowest projected balance (next 30 days)</span>
+                {% if summary.next_30_days_low is not none %}
+                  <strong class="{% if summary.next_30_days_low < 0 %}text-danger{% endif %}">
+                    ${{ '{:,.2f}'.format(summary.next_30_days_low) }}
+                  </strong>
+                {% else %}<span class="text-body-secondary">No future dates available</span>{% endif %}
+              </div>
+              {% if summary.first_negative_date %}
+                <div class="alert alert-warning py-2 mt-2 mb-0" role="alert">
+                  Projected negative balance starting {{ summary.first_negative_date.strftime('%b %-d, %Y') }}.
+                </div>
+              {% endif %}
+              <details class="mt-2">
+                <summary class="small">Daily balance forecast</summary>
+                <div class="table-responsive mt-2" style="max-height:240px;overflow-y:auto">
+                  <table class="table table-sm">
+                    <thead><tr><th>Date</th><th class="text-end">Change</th><th class="text-end">Balance</th></tr></thead>
+                    <tbody>
+                    {% for day in summary.next_30_days %}
+                      <tr class="{% if day.negative %}table-warning{% endif %}">
+                        <td>{{ day.date.strftime('%b %-d') }}</td>
+                        <td class="text-end">${{ '{:,.2f}'.format(day.change) }}</td>
+                        <td class="text-end">${{ '{:,.2f}'.format(day.balance) }}</td>
+                      </tr>
+                    {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="form-text">Forecast uses scheduled transactions and planned card payments; actual transactions may differ.</div>
+              </details>
+            </div>
+
             <form method="post" action="{{ url_for('main.update_account_balance', account_id=summary.account.id) }}" class="border-top pt-3">
               {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <div class="row g-2 align-items-end">
