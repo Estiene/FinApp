@@ -33,5 +33,25 @@ class CardForecastTests(unittest.TestCase):
             payoff_estimate("100", "101", "10")
 
 
+    def test_dashboard_card_forecast(self):
+        from datetime import date
+        from types import SimpleNamespace
+        from src.utils.dashboard import build_dashboard_data
+        card = SimpleNamespace(
+            id=7, name="Visa", balance=Decimal("100.00"),
+            balance_as_of=date(2026, 11, 1), bills=[], statements=[],
+            payments=[], minimum_payment=Decimal("60"),
+            extra_payment=Decimal("0"), payment_account_id=1,
+            annual_percentage_rate=Decimal("12"),
+            credit_limit=Decimal("1000"),
+            promotional_apr=None, promotional_apr_end_date=None,
+        )
+        result = build_dashboard_data([], today=date(2026, 11, 1),
+                                      credit_cards=[card])
+        summary = result["credit_card_summaries"][0]
+        self.assertEqual(summary["utilization_pct"], Decimal("10.0"))
+        self.assertEqual(summary["effective_apr"], Decimal("12"))
+        self.assertEqual(summary["payoff_estimate"]["months"], 2)
+
 if __name__ == "__main__":
     unittest.main()
