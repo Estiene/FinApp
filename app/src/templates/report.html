@@ -85,8 +85,38 @@
         {% for d in section.days %}
         <tr>
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
-          <td>${{ '%.2f'|format(d.income) }}</td>
-          <td>${{ '%.2f'|format(d.bills) }}</td>
+          <td>
+            {% if d.income_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View income for {{ d.date }}">
+                ${{ '%.2f'|format(d.income) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.income_details %}
+                <li>{{ item.name }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.income) }}
+            {% endif %}
+          </td>
+          <td>
+            {% if d.bill_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View bills for {{ d.date }}">
+                ${{ '%.2f'|format(d.bills) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.bill_details %}
+                <li>{{ item.name }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.bills) }}
+            {% endif %}
+          </td>
           <td>
             {% if d.charge_details %}
             <details>
@@ -103,7 +133,22 @@
             ${{ '%.2f'|format(d.credit_card_charges) }}
             {% endif %}
           </td>
-          <td>${{ '%.2f'|format(d.credit_card_payments) }}</td>
+          <td>
+            {% if d.card_payment_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View credit card payments for {{ d.date }}">
+                ${{ '%.2f'|format(d.credit_card_payments) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.card_payment_details %}
+                <li>{{ item.card }} &mdash; {{ item.kind }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.credit_card_payments) }}
+            {% endif %}
+          </td>
           <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.net) }}
           </td>
