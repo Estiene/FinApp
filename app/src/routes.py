@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
+from .utils.planned_payments import planned_payments_for_account
 from calendar import monthrange
 
 bp = Blueprint('main', __name__)
@@ -641,7 +642,9 @@ def report():
 
         return dates
 
-    # 6. Build report_data per account
+    # 6. Build report_data per account. Cash Flow uses planned card payments,
+    # not completed payment history. Card-funded bills are not bank outflows.
+    cards = CreditCard.query.all()
     report_data = []
     for acct in accounts:
         sb = starting_balances[acct.id]
@@ -655,8 +658,15 @@ def report():
         # Reuse the same recurring bill engine as the dashboard.
         bill_map = {}
         for b in acct.bills:
+            if b.credit_card_id is not None:
+                # The charge increases card debt, not the bank account outflow.
+                continue
             for due in bill_dates(b, start_date, last_day):
                 bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+
+        card_payment_map = planned_payments_for_account(
+            cards, acct.id, start_date, last_day
+        )
 
         # walk from start_date through end of month
         days, bal = [], sb
@@ -665,13 +675,15 @@ def report():
             current = start_date + relativedelta(days=i)
             inc_amt  = income_map.get(current, 0.0)
             bill_amt = bill_map.get(current,  0.0)
-            net      = inc_amt - bill_amt
+            card_amt = float(card_payment_map.get(current, 0))
+            net      = inc_amt - bill_amt - card_amt
             bal     += net
 
             days.append({
                 'date':    current,
                 'income':  inc_amt,
                 'bills':   bill_amt,
+                'credit_card_payments': card_amt,
                 'net':     net,
                 'balance': round(bal, 2)
             })
