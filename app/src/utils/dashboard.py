@@ -209,6 +209,7 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
     credit_card_summaries = []
 
     from .card_forecast import utilization, payoff_estimate
+    from .statement_reminders import statement_reminder
     for card in credit_cards:
         projected_debt = projected_card_balance(card, today)
 
@@ -247,6 +248,7 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             "utilization_pct": utilization_pct,
             "effective_apr": effective_apr,
             "payoff_estimate": payoff,
+            "statement_reminder": statement_reminder(card, today),
         })
 
     return {
