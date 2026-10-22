@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h2>Monthly Cash-Flow: {{ month }}/{{ year }}</h2>
+  <h2>Cash Flow: {{ month }}/{{ year }}</h2>
 
   <!-- Controls: Month nav + per-account starting balances + start date -->
   <div class="d-flex justify-content-between align-items-center mb-4">
@@ -75,6 +75,8 @@
           <th>Date</th>
           <th>Income</th>
           <th>Bills</th>
+          <th>Credit Card Charges <small class="text-muted">(not deducted)</small></th>
+          <th>Credit Card Payments</th>
           <th>Net</th>
           <th>Balance</th>
         </tr>
@@ -83,8 +85,70 @@
         {% for d in section.days %}
         <tr>
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
-          <td>${{ '%.2f'|format(d.income) }}</td>
-          <td>${{ '%.2f'|format(d.bills) }}</td>
+          <td>
+            {% if d.income_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View income for {{ d.date }}">
+                ${{ '%.2f'|format(d.income) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.income_details %}
+                <li>{{ item.name }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.income) }}
+            {% endif %}
+          </td>
+          <td>
+            {% if d.bill_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View bills for {{ d.date }}">
+                ${{ '%.2f'|format(d.bills) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.bill_details %}
+                <li>{{ item.name }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.bills) }}
+            {% endif %}
+          </td>
+          <td>
+            {% if d.charge_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View credit card charges for {{ d.date }}">
+                ${{ '%.2f'|format(d.credit_card_charges) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for charge in d.charge_details %}
+                <li>{{ charge.bill }} &mdash; {{ charge.card }}: ${{ '%.2f'|format(charge.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.credit_card_charges) }}
+            {% endif %}
+          </td>
+          <td>
+            {% if d.card_payment_details %}
+            <details>
+              <summary class="text-primary" style="cursor: pointer;" aria-label="View credit card payments for {{ d.date }}">
+                ${{ '%.2f'|format(d.credit_card_payments) }}
+              </summary>
+              <ul class="list-unstyled small mt-2 mb-0">
+                {% for item in d.card_payment_details %}
+                <li>{{ item.card }} &mdash; {{ item.kind }}: ${{ '%.2f'|format(item.amount) }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% else %}
+            ${{ '%.2f'|format(d.credit_card_payments) }}
+            {% endif %}
+          </td>
           <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.net) }}
           </td>
@@ -94,6 +158,17 @@
         </tr>
         {% endfor %}
       </tbody>
+      <tfoot class="table-group-divider fw-bold">
+        <tr>
+          <th scope="row">Total</th>
+          <td>${{ '%.2f'|format(section.totals.income) }}</td>
+          <td>${{ '%.2f'|format(section.totals.bills) }}</td>
+          <td>${{ '%.2f'|format(section.totals.credit_card_charges) }}</td>
+          <td>${{ '%.2f'|format(section.totals.credit_card_payments) }}</td>
+          <td>${{ '%.2f'|format(section.totals.net) }}</td>
+          <td>${{ '%.2f'|format(section.days[-1].balance) }}</td>
+        </tr>
+      </tfoot>
     </table>
   </details>
   {% endfor %}

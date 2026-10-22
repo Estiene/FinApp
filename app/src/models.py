@@ -90,6 +90,17 @@ class CreditCard(db.Model):
         db.Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
 
+    # Stage 5A: independent recurring extra-payment date; NULL means due day.
+    extra_payment_day = db.Column(db.Integer, nullable=True)
+    # Bill-related payments may be due on the statement due date or earlier.
+    bill_payment_timing = db.Column(
+        db.String(20), nullable=False, default="due_date",
+        server_default="due_date",
+    )
+    bill_payment_days_before = db.Column(
+        db.Integer, nullable=False, default=0, server_default="0",
+    )
+
     payment_account_id = db.Column(
         db.Integer,
         db.ForeignKey('accounts.id'),

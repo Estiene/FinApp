@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
+from .utils.planned_payments import planned_card_payments
 from calendar import monthrange
 
 bp = Blueprint('main', __name__)
@@ -59,7 +60,26 @@ def build_bill(form, existing=None):
     if frequency not in BILL_FREQUENCIES:
         raise ValueError("Choose a valid bill frequency.")
     try:
-        account_id = int(form["account_id"])
+        method = form.get("payment_method", "").strip()
+        card_id = None
+        if method:
+            kind, separator, raw_id = method.partition(":")
+            if not separator:
+                raise ValueError
+            selected_id = int(raw_id)
+            if kind == "account":
+                account_id = selected_id
+            elif kind == "card":
+                selected_card = CreditCard.query.get(selected_id)
+                if selected_card is None:
+                    raise ValueError
+                card_id = selected_card.id
+                account_id = selected_card.payment_account_id
+            else:
+                raise ValueError
+        else:
+            # Backwards-compatible with existing bill form submissions.
+            account_id = int(form["account_id"])
         amount = Decimal(form["amount"])
         if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
             raise ValueError
@@ -96,6 +116,7 @@ def build_bill(form, existing=None):
     bill.frequency = frequency
     bill.next_due = next_due
     bill.account_id = account_id
+    bill.credit_card_id = card_id
     return bill
 
 
@@ -208,6 +229,22 @@ def validate_credit_card_form(card_id=None):
     if not (1 <= close_day <= 31 and 1 <= due_day <= 31):
         raise ValueError("Statement and payment days must be between 1 and 31.")
 
+    # Preserve the existing due-date behavior when older forms omit these.
+    extra_day_raw = request.form.get('extra_payment_day', '').strip()
+    extra_day = int(extra_day_raw) if extra_day_raw else None
+    if extra_day is not None and not 1 <= extra_day <= 31:
+        raise ValueError("Extra payment day must be between 1 and 31.")
+
+    timing = request.form.get('bill_payment_timing', 'due_date')
+    if timing not in ('due_date', 'days_before_due'):
+        raise ValueError("Select a valid bill-related payment schedule.")
+    days_raw = request.form.get('bill_payment_days_before', '0').strip()
+    days_before = int(days_raw or '0')
+    if not 0 <= days_before <= 31:
+        raise ValueError("Days before due must be between 0 and 31.")
+    if timing == 'due_date':
+        days_before = 0
+
     balance_as_of = date.fromisoformat(
         request.form.get('balance_as_of', '')
     )
@@ -220,6 +257,9 @@ def validate_credit_card_form(card_id=None):
         balance_as_of=balance_as_of,
         statement_close_day=close_day,
         payment_due_day=due_day,
+        extra_payment_day=extra_day,
+        bill_payment_timing=timing,
+        bill_payment_days_before=days_before,
         **amounts
     )
 
@@ -496,6 +536,7 @@ def delete_account(account_id):
 @bp.route('/bills/<int:bill_id>', methods=['GET', 'POST'])
 def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
+    cards = CreditCard.query.order_by(CreditCard.name).all()
 
     if request.method == 'POST':
         existing = Bill.query.get_or_404(bill_id) if bill_id else None
@@ -512,10 +553,10 @@ def bills(bill_id):
 
     if bill_id:
         bill = Bill.query.get_or_404(bill_id)
-        return render_template('edit_bill.html', bill=bill, accounts=accounts)
+        return render_template('edit_bill.html', bill=bill, accounts=accounts, cards=cards)
 
     all_bills = Bill.query.order_by(Bill.due_day).all()
-    return render_template('bills.html', bills=all_bills, accounts=accounts)
+    return render_template('bills.html', bills=all_bills, accounts=accounts, cards=cards)
 
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])
@@ -641,22 +682,62 @@ def report():
 
         return dates
 
-    # 6. Build report_data per account
+    # 6. Build report_data per account. Cash Flow uses planned card payments,
+    # not completed payment history. Card-funded bills are not bank outflows.
+    cards = CreditCard.query.all()
     report_data = []
     for acct in accounts:
         sb = starting_balances[acct.id]
 
         # map each date → total incomes
         income_map = {}
+        income_details = {}
         for inc in acct.incomes:
             for dt in income_dates_for_month(inc):
-                income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
+                amount = float(inc.amount)
+                income_map[dt] = income_map.get(dt, 0.0) + amount
+                income_details.setdefault(dt, []).append({
+                    'name': inc.name, 'amount': amount,
+                })
 
         # Reuse the same recurring bill engine as the dashboard.
         bill_map = {}
+        bill_details = {}
+        card_charge_map = {}
         for b in acct.bills:
             for due in bill_dates(b, start_date, last_day):
-                bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+                if b.credit_card_id is not None:
+                    # Display the charge, but do not subtract it from checking.
+                    card_charge_map.setdefault(due, []).append({
+                        'bill': b.name,
+                        'card': b.credit_card.name,
+                        'amount': float(b.amount),
+                    })
+                else:
+                    bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+                    bill_details.setdefault(due, []).append({
+                        'name': b.name, 'amount': float(b.amount),
+                    })
+
+        card_payment_map = {}
+        card_payment_details = {}
+        payment_labels = {
+            'bill_related': 'Bill-related',
+            'extra': 'Extra',
+            'minimum': 'Minimum',
+        }
+        for card in cards:
+            if card.payment_account_id != acct.id:
+                continue
+            for payment in planned_card_payments(card, start_date, last_day):
+                dt = payment['date']
+                amount = float(payment['amount'])
+                card_payment_map[dt] = card_payment_map.get(dt, 0.0) + amount
+                card_payment_details.setdefault(dt, []).append({
+                    'card': card.name,
+                    'kind': payment_labels.get(payment['kind'], payment['kind']),
+                    'amount': amount,
+                })
 
         # walk from start_date through end of month
         days, bal = [], sb
@@ -665,13 +746,22 @@ def report():
             current = start_date + relativedelta(days=i)
             inc_amt  = income_map.get(current, 0.0)
             bill_amt = bill_map.get(current,  0.0)
-            net      = inc_amt - bill_amt
+            card_amt = float(card_payment_map.get(current, 0))
+            charges = card_charge_map.get(current, [])
+            charge_amt = sum(item['amount'] for item in charges)
+            net      = inc_amt - bill_amt - card_amt
             bal     += net
 
             days.append({
                 'date':    current,
                 'income':  inc_amt,
+                'income_details': income_details.get(current, []),
                 'bills':   bill_amt,
+                'bill_details': bill_details.get(current, []),
+                'card_payment_details': card_payment_details.get(current, []),
+                'credit_card_payments': card_amt,
+                'credit_card_charges': charge_amt,
+                'charge_details': charges,
                 'net':     net,
                 'balance': round(bal, 2)
             })
@@ -679,7 +769,14 @@ def report():
         report_data.append({
             'account':          acct,
             'starting_balance': sb,
-            'days':             days
+            'days':             days,
+            'totals': {
+                'income': round(sum(day['income'] for day in days), 2),
+                'bills': round(sum(day['bills'] for day in days), 2),
+                'credit_card_payments': round(sum(day['credit_card_payments'] for day in days), 2),
+                'credit_card_charges': round(sum(day['credit_card_charges'] for day in days), 2),
+                'net': round(sum(day['net'] for day in days), 2),
+            }
         })
 
     # 7. Prev/Next month for header navigation

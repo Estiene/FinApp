@@ -12,16 +12,21 @@
 
     <!-- Account selector now col-md-3 -->
     <div class="col-md-6">
-      <label for="bill-account" class="form-label">Payment account</label>
-      <div class="d-flex align-items-center gap-2">
-        <select id="bill-account" name="account_id" class="form-select" required>
-          <option value="">Select an account</option>
+      <label for="bill-payment-method" class="form-label">Payment method</label>
+      <select id="bill-payment-method" name="payment_method" class="form-select" required>
+        <option value="">Select a payment method</option>
+        <optgroup label="Bank accounts">
           {% for acct in accounts %}
-          <option value="{{ acct.id }}" >{{ acct.name }}</option>
+          <option value="account:{{ acct.id }}">{{ acct.name }}</option>
           {% endfor %}
-        </select>
-        <a href="{{ url_for('main.accounts') }}" class="btn btn-link">Manage</a>
-      </div>
+        </optgroup>
+        <optgroup label="Credit cards">
+          {% for card in cards %}
+          <option value="card:{{ card.id }}">{{ card.name }}</option>
+          {% endfor %}
+        </optgroup>
+      </select>
+      <div class="form-text">Credit card bills are paid later from the card's configured payment account.</div>
     </div>
     <div class="col-md-6">
       <label for="bill-name" class="form-label">Bill name</label>
@@ -88,7 +93,7 @@
     <thead>
       <tr>
         <th>ID</th>
-        <th>Account</th>
+        <th>Payment method</th>
         <th>Name</th>
         <th>Owner</th>
         <th>Schedule</th>
@@ -100,7 +105,7 @@
       {% for bill in bills %}
       <tr>
         <td>{{ bill.id }}</td>
-        <td>{{ bill.account.name }}</td>
+        <td>{{ bill.credit_card.name if bill.credit_card else bill.account.name }}</td>
         <td>{{ bill.name }}</td>
         <td>{{ bill.owner }}</td>
         <td>{% if (bill.frequency or 'monthly') == 'monthly' %}Monthly, day {{ bill.due_day }}{% else %}{{ (bill.frequency or '')|replace('_', ' ')|title }} from {{ bill.next_due }}{% endif %}</td>
