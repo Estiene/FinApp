@@ -32,6 +32,16 @@ def account(name, starting_balance="1000.00", balance_as_of=None, incomes=None, 
     )
 
 
+def card_fixture(**values):
+    defaults = dict(
+        id=1, statement_close_day=15, payment_due_day=10,
+        extra_payment_day=None, bill_payment_timing="due_date",
+        bill_payment_days_before=0,
+    )
+    defaults.update(values)
+    return SimpleNamespace(**defaults)
+
+
 class DashboardDateTests(unittest.TestCase):
     def test_weekly_dates_follow_original_payday_anchor(self):
         item = income("weekly", next_pay=date(2026, 10, 5))
@@ -112,7 +122,7 @@ class DashboardProjectionTests(unittest.TestCase):
             payment_date=None,
         )
 
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("860.00"),
             balance_as_of=today,
             minimum_payment=Decimal("40.00"),
@@ -156,7 +166,7 @@ class DashboardProjectionTests(unittest.TestCase):
                 actual_payment=None,
                 payment_date=None,
             )
-            return SimpleNamespace(
+            return card_fixture(
                 balance=Decimal(balance),
                 balance_as_of=today,
                 minimum_payment=Decimal(minimum),
@@ -201,7 +211,7 @@ class DashboardProjectionTests(unittest.TestCase):
             actual_payment=None,
             payment_date=None,
         )
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("860.00"),
             balance_as_of=today,
             minimum_payment=Decimal("40.00"),
@@ -238,7 +248,7 @@ class DashboardProjectionTests(unittest.TestCase):
             actual_payment=Decimal("140.00"),
             payment_date=date(2026, 10, 15),
         )
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("1000.00"),
             balance_as_of=date(2026, 10, 1),
             minimum_payment=Decimal("40.00"),
