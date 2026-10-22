@@ -179,6 +179,92 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertIn("Ending: $525.00", html)
         # 1000 - 300 rent - 100 planned bill payment - 25 minimum - 50 extra
 
+    def test_new_card_scheduling_settings_are_saved(self):
+        from src.models import Account, CreditCard
+        acct = Account(name="Checking")
+        self.db.session.add(acct)
+        self.db.session.commit()
+        response = self.app.test_client().post("/credit-cards", data={
+            "name": "Visa", "payment_account_id": str(acct.id),
+            "balance": "100", "balance_as_of": "2026-10-01",
+            "minimum_payment": "25", "extra_payment": "50",
+            "statement_close_day": "15", "payment_due_day": "10",
+            "extra_payment_day": "8",
+            "bill_payment_timing": "days_before_due",
+            "bill_payment_days_before": "3",
+        })
+        self.assertEqual(response.status_code, 302)
+        visa = CreditCard.query.filter_by(name="Visa").one()
+        self.assertEqual(visa.extra_payment_day, 8)
+        self.assertEqual(visa.bill_payment_timing, "days_before_due")
+        self.assertEqual(visa.bill_payment_days_before, 3)
+        self.assertIn("Extra Payment Day", self.app.test_client().get(
+            f"/credit-cards/{visa.id}/edit"
+        ).get_data(as_text=True))
+
+    def test_invalid_scheduling_settings_do_not_save_card(self):
+        from src.models import Account, CreditCard
+        acct = Account(name="Checking")
+        self.db.session.add(acct)
+        self.db.session.commit()
+        base = {
+            "name": "Visa", "payment_account_id": str(acct.id),
+            "balance": "100", "balance_as_of": "2026-10-01",
+            "minimum_payment": "25", "extra_payment": "50",
+            "statement_close_day": "15", "payment_due_day": "10",
+            "extra_payment_day": "32",
+            "bill_payment_timing": "days_before_due",
+            "bill_payment_days_before": "3",
+        }
+        response = self.app.test_client().post("/credit-cards", data=base)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CreditCard.query.count(), 0)
+        base["extra_payment_day"] = "8"
+        base["bill_payment_days_before"] = "32"
+        self.app.test_client().post("/credit-cards", data=base)
+        self.assertEqual(CreditCard.query.count(), 0)
+
+    def test_edit_card_scheduling_settings_updates_cash_flow(self):
+        from src.models import Account, CreditCard, Bill
+        acct = Account(name="Checking")
+        self.db.session.add(acct)
+        self.db.session.flush()
+        visa = CreditCard(
+            name="Visa", payment_account_id=acct.id,
+            balance=Decimal("500"), balance_as_of=date(2026, 10, 1),
+            statement_close_day=15, payment_due_day=10,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+        )
+        self.db.session.add(visa)
+        self.db.session.flush()
+        self.db.session.add(Bill(
+            name="Electric", owner="Test", due_day=2, amount=Decimal("100"),
+            account_id=acct.id, credit_card_id=visa.id,
+        ))
+        self.db.session.commit()
+        response = self.app.test_client().post(
+            f"/credit-cards/{visa.id}/edit", data={
+                "name": "Visa", "payment_account_id": str(acct.id),
+                "balance": "500", "balance_as_of": "2026-10-01",
+                "minimum_payment": "25", "extra_payment": "50",
+                "statement_close_day": "15", "payment_due_day": "10",
+                "extra_payment_day": "8",
+                "bill_payment_timing": "days_before_due",
+                "bill_payment_days_before": "3",
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.db.session.refresh(visa)
+        events = planned_card_payments(
+            visa, date(2026, 12, 1), date(2026, 12, 31)
+        )
+        self.assertEqual(
+            {e["kind"]: e["date"] for e in events},
+            {"extra": date(2026, 12, 8),
+             "minimum": date(2026, 12, 10),
+             "bill_related": date(2026, 12, 7)},
+        )
+
     def test_cash_flow_only_deducts_payments_from_linked_account(self):
         from src.models import Account, CreditCard
         checking = Account(name="Checking")
