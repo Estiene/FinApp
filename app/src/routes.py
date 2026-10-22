@@ -60,7 +60,26 @@ def build_bill(form, existing=None):
     if frequency not in BILL_FREQUENCIES:
         raise ValueError("Choose a valid bill frequency.")
     try:
-        account_id = int(form["account_id"])
+        method = form.get("payment_method", "").strip()
+        card_id = None
+        if method:
+            kind, separator, raw_id = method.partition(":")
+            if not separator:
+                raise ValueError
+            selected_id = int(raw_id)
+            if kind == "account":
+                account_id = selected_id
+            elif kind == "card":
+                selected_card = CreditCard.query.get(selected_id)
+                if selected_card is None:
+                    raise ValueError
+                card_id = selected_card.id
+                account_id = selected_card.payment_account_id
+            else:
+                raise ValueError
+        else:
+            # Backwards-compatible with existing bill form submissions.
+            account_id = int(form["account_id"])
         amount = Decimal(form["amount"])
         if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
             raise ValueError
@@ -97,6 +116,7 @@ def build_bill(form, existing=None):
     bill.frequency = frequency
     bill.next_due = next_due
     bill.account_id = account_id
+    bill.credit_card_id = card_id
     return bill
 
 
@@ -516,6 +536,7 @@ def delete_account(account_id):
 @bp.route('/bills/<int:bill_id>', methods=['GET', 'POST'])
 def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
+    cards = CreditCard.query.order_by(CreditCard.name).all()
 
     if request.method == 'POST':
         existing = Bill.query.get_or_404(bill_id) if bill_id else None
@@ -532,10 +553,10 @@ def bills(bill_id):
 
     if bill_id:
         bill = Bill.query.get_or_404(bill_id)
-        return render_template('edit_bill.html', bill=bill, accounts=accounts)
+        return render_template('edit_bill.html', bill=bill, accounts=accounts, cards=cards)
 
     all_bills = Bill.query.order_by(Bill.due_day).all()
-    return render_template('bills.html', bills=all_bills, accounts=accounts)
+    return render_template('bills.html', bills=all_bills, accounts=accounts, cards=cards)
 
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])
