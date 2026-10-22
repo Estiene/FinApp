@@ -209,6 +209,22 @@ def validate_credit_card_form(card_id=None):
     if not (1 <= close_day <= 31 and 1 <= due_day <= 31):
         raise ValueError("Statement and payment days must be between 1 and 31.")
 
+    # Preserve the existing due-date behavior when older forms omit these.
+    extra_day_raw = request.form.get('extra_payment_day', '').strip()
+    extra_day = int(extra_day_raw) if extra_day_raw else None
+    if extra_day is not None and not 1 <= extra_day <= 31:
+        raise ValueError("Extra payment day must be between 1 and 31.")
+
+    timing = request.form.get('bill_payment_timing', 'due_date')
+    if timing not in ('due_date', 'days_before_due'):
+        raise ValueError("Select a valid bill-related payment schedule.")
+    days_raw = request.form.get('bill_payment_days_before', '0').strip()
+    days_before = int(days_raw or '0')
+    if not 0 <= days_before <= 31:
+        raise ValueError("Days before due must be between 0 and 31.")
+    if timing == 'due_date':
+        days_before = 0
+
     balance_as_of = date.fromisoformat(
         request.form.get('balance_as_of', '')
     )
@@ -221,6 +237,9 @@ def validate_credit_card_form(card_id=None):
         balance_as_of=balance_as_of,
         statement_close_day=close_day,
         payment_due_day=due_day,
+        extra_payment_day=extra_day,
+        bill_payment_timing=timing,
+        bill_payment_days_before=days_before,
         **amounts
     )
 
