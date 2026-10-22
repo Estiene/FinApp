@@ -75,6 +75,7 @@
           <th>Date</th>
           <th>Income</th>
           <th>Bills</th>
+          <th>Credit Card Payments</th>
           <th>Net</th>
           <th>Balance</th>
         </tr>
@@ -85,6 +86,7 @@
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
           <td>${{ '%.2f'|format(d.income) }}</td>
           <td>${{ '%.2f'|format(d.bills) }}</td>
+          <td>${{ '%.2f'|format(d.credit_card_payments) }}</td>
           <td class="{% if d.net < 0 %}text-danger{% elif d.net > 0 %}text-success{% endif %}">
             ${{ '%.2f'|format(d.net) }}
           </td>
