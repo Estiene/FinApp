@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
-from .utils.planned_payments import planned_payments_for_account
+from .utils.planned_payments import planned_card_payments
 from calendar import monthrange
 
 bp = Blueprint('main', __name__)
