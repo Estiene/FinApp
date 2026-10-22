@@ -691,12 +691,18 @@ def report():
 
         # map each date → total incomes
         income_map = {}
+        income_details = {}
         for inc in acct.incomes:
             for dt in income_dates_for_month(inc):
-                income_map[dt] = income_map.get(dt, 0.0) + float(inc.amount)
+                amount = float(inc.amount)
+                income_map[dt] = income_map.get(dt, 0.0) + amount
+                income_details.setdefault(dt, []).append({
+                    'name': inc.name, 'amount': amount,
+                })
 
         # Reuse the same recurring bill engine as the dashboard.
         bill_map = {}
+        bill_details = {}
         card_charge_map = {}
         for b in acct.bills:
             for due in bill_dates(b, start_date, last_day):
@@ -709,10 +715,29 @@ def report():
                     })
                 else:
                     bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+                    bill_details.setdefault(due, []).append({
+                        'name': b.name, 'amount': float(b.amount),
+                    })
 
-        card_payment_map = planned_payments_for_account(
-            cards, acct.id, start_date, last_day
-        )
+        card_payment_map = {}
+        card_payment_details = {}
+        payment_labels = {
+            'bill_related': 'Bill-related',
+            'extra': 'Extra',
+            'minimum': 'Minimum',
+        }
+        for card in cards:
+            if card.payment_account_id != acct.id:
+                continue
+            for payment in planned_card_payments(card, start_date, last_day):
+                dt = payment['date']
+                amount = float(payment['amount'])
+                card_payment_map[dt] = card_payment_map.get(dt, 0.0) + amount
+                card_payment_details.setdefault(dt, []).append({
+                    'card': card.name,
+                    'kind': payment_labels.get(payment['kind'], payment['kind']),
+                    'amount': amount,
+                })
 
         # walk from start_date through end of month
         days, bal = [], sb
@@ -730,7 +755,10 @@ def report():
             days.append({
                 'date':    current,
                 'income':  inc_amt,
+                'income_details': income_details.get(current, []),
                 'bills':   bill_amt,
+                'bill_details': bill_details.get(current, []),
+                'card_payment_details': card_payment_details.get(current, []),
                 'credit_card_payments': card_amt,
                 'credit_card_charges': charge_amt,
                 'charge_details': charges,
