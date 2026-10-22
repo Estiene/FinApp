@@ -208,8 +208,22 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
 
     credit_card_summaries = []
 
+    from .card_forecast import utilization, payoff_estimate
     for card in credit_cards:
         projected_debt = projected_card_balance(card, today)
+
+        credit_limit = getattr(card, "credit_limit", None)
+        utilization_pct = utilization(projected_debt, credit_limit)
+        standard_apr = getattr(card, "annual_percentage_rate", None)
+        promo_apr = getattr(card, "promotional_apr", None)
+        promo_end = getattr(card, "promotional_apr_end_date", None)
+        # A promotional rate is only applied while it is currently valid.
+        # The payoff estimate below uses a fixed rate and is therefore
+        # suppressed when a promotion will expire before payoff.
+        effective_apr = (
+            promo_apr if promo_apr is not None and promo_end is not None
+            and today <= promo_end else standard_apr
+        )
 
         suggested = minimum_plus_extra_payment(
             outstanding_balance=projected_debt,
@@ -217,10 +231,22 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             extra_payment=card.extra_payment,
         )
 
+        payoff = None
+        if effective_apr is not None:
+            payoff = payoff_estimate(projected_debt, effective_apr, suggested)
+            if promo_apr is not None and promo_end is not None and today <= promo_end:
+                # Do not project a fixed promo APR beyond its expiration.
+                from dateutil.relativedelta import relativedelta as _rd
+                if payoff is None or today + _rd(months=payoff["months"]) > promo_end:
+                    payoff = None
+
         credit_card_summaries.append({
             "card": card,
             "projected_balance": projected_debt,
             "suggested_payment": suggested,
+            "utilization_pct": utilization_pct,
+            "effective_apr": effective_apr,
+            "payoff_estimate": payoff,
         })
 
     return {
