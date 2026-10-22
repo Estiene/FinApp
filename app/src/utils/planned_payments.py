@@ -61,7 +61,7 @@ def planned_card_payments(card, start_date, end_date):
     The lookback allows statement-cycle bills charged before the report
     window to contribute to payments due within the report window.
     """
-    if start_date > end_date:
+    if start_date > end_date or not getattr(card, "is_active", True):
         return []
     events = []
     # Covers bills in the preceding statement cycle for due dates early
