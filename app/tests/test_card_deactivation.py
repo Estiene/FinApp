@@ -63,6 +63,47 @@ class CreditCardDeactivationRouteTests(unittest.TestCase):
         self.post("deactivate")
         self.assertTrue(self.card.is_active)
 
+    def test_add_card_page_renders_without_existing_cards(self):
+        response = self.app.test_client().get("/credit-cards")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'name="annual_percentage_rate"', response.data)
+
+    def test_add_card_saves_forecast_settings(self):
+        response = self.app.test_client().post("/credit-cards", data={
+            "name": "Travel",
+            "payment_account_id": str(self.card.payment_account_id),
+            "balance": "200.00",
+            "balance_as_of": date.today().isoformat(),
+            "minimum_payment": "25.00",
+            "extra_payment": "0.00",
+            "statement_close_day": "15",
+            "payment_due_day": "10",
+            "annual_percentage_rate": "19.99",
+            "credit_limit": "2000.00",
+            "promotional_apr": "0",
+            "promotional_apr_end_date": "2027-12-31",
+        })
+        self.assertEqual(response.status_code, 302)
+        travel = CreditCard.query.filter_by(name="Travel").one()
+        self.assertEqual(travel.annual_percentage_rate, Decimal("19.99"))
+        self.assertEqual(travel.credit_limit, Decimal("2000"))
+        self.assertEqual(travel.promotional_apr, Decimal("0"))
+        self.assertEqual(travel.promotional_apr_end_date, date(2027, 12, 31))
+
+    def test_add_card_rejects_promotion_without_end_date(self):
+        response = self.app.test_client().post("/credit-cards", data={
+            "name": "Invalid Promo",
+            "payment_account_id": str(self.card.payment_account_id),
+            "balance": "0",
+            "balance_as_of": date.today().isoformat(),
+            "minimum_payment": "0",
+            "statement_close_day": "15",
+            "payment_due_day": "10",
+            "promotional_apr": "0",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(CreditCard.query.filter_by(name="Invalid Promo").first())
+
     def test_unknown_action_is_rejected(self):
         self.assertEqual(self.post("delete").status_code, 400)
 
