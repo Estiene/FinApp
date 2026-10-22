@@ -1,4 +1,4 @@
-"""Stage 5A planned-payment and Cash Flow regression tests.
+"""Stage 5A/5B planned-payment and Cash Flow regression tests.
 
 Run from app/: python -m unittest discover -s tests -v
 """
@@ -54,14 +54,14 @@ class PlannedPaymentTests(unittest.TestCase):
         self.assertIn(dict(date=date(2026, 12, 10), kind="bill_related",
                            amount=Decimal("200.00"), card_id=1), events)
 
-    def test_confirmed_statement_caps_bill_related_but_not_minimum(self):
+    def test_confirmed_statement_caps_bill_related_and_reconciles_minimum(self):
         s = statement(date(2026, 11, 15), "150")
         item = card(bills=[bill("100", 2), bill("100", 12)], statements=[s])
         events = self.events(item)
         self.assertEqual(
             sum(e["amount"] for e in events if e["date"] == date(2026, 12, 10)),
-            Decimal("225.00"),
-        )  # 150 bill-related + 25 minimum + 50 extra
+            Decimal("200.00"),
+        )  # 150 bill-related satisfies 25 minimum; 50 extra remains
 
     def test_early_recorded_payment_does_not_reduce_conservative_plan(self):
         s = statement(date(2026, 11, 15), "150", payments=[
@@ -70,7 +70,7 @@ class PlannedPaymentTests(unittest.TestCase):
         item = card(bills=[bill("100", 2), bill("100", 12)], statements=[s])
         self.assertEqual(
             sum(e["amount"] for e in self.events(item)),
-            Decimal("225.00"),
+            Decimal("200.00"),
         )
 
     def test_estimated_statement_is_not_a_cap(self):
@@ -98,6 +98,67 @@ class PlannedPaymentTests(unittest.TestCase):
             dict(date=date(2026, 12, 7), kind="bill_related",
                  amount=Decimal("100.00"), card_id=1)
         ])
+
+    def test_partial_bill_payment_leaves_only_remaining_minimum(self):
+        item = card(bills=[bill("10", 2)], minimum="25", extra="0")
+        self.assertEqual(self.events(item), [
+            dict(date=date(2026, 12, 10), kind="bill_related",
+                 amount=Decimal("10.00"), card_id=1),
+            dict(date=date(2026, 12, 10), kind="minimum",
+                 amount=Decimal("15.00"), card_id=1),
+        ])
+
+    def test_full_bill_payment_satisfies_minimum_but_not_extra(self):
+        item = card(bills=[bill("100", 2)], minimum="25", extra="50")
+        events = self.events(item)
+        self.assertEqual({e["kind"] for e in events}, {"bill_related", "extra"})
+        self.assertEqual(sum(e["amount"] for e in events), Decimal("150.00"))
+
+    def test_payment_on_statement_close_does_not_satisfy_minimum(self):
+        # A December 10 due date, November 15 close, 25-day early payment.
+        item = card(bills=[bill("100", 2)], minimum="25", extra="0",
+                    bill_payment_timing="days_before_due",
+                    bill_payment_days_before=25)
+        events = self.events(item)
+        self.assertIn(dict(date=date(2026, 11, 15), kind="bill_related",
+                           amount=Decimal("100.00"), card_id=1),
+                      planned_card_payments(item, date(2026, 11, 1), self.END))
+        self.assertEqual(events, [
+            dict(date=date(2026, 12, 10), kind="minimum",
+                 amount=Decimal("25.00"), card_id=1)
+        ])
+
+    def test_payment_before_statement_close_does_not_satisfy_minimum(self):
+        item = card(bills=[bill("100", 2)], minimum="25", extra="0",
+                    bill_payment_timing="days_before_due",
+                    bill_payment_days_before=26)
+        events = self.events(item)
+        self.assertEqual(events, [
+            dict(date=date(2026, 12, 10), kind="minimum",
+                 amount=Decimal("25.00"), card_id=1)
+        ])
+
+    def test_payment_after_close_and_on_due_date_qualifies(self):
+        for offset in (0, 1, 24):
+            with self.subTest(days_before_due=offset):
+                item = card(bills=[bill("100", 2)], minimum="25", extra="0",
+                            bill_payment_timing="days_before_due",
+                            bill_payment_days_before=offset)
+                self.assertNotIn("minimum", {
+                    e["kind"] for e in self.events(item)
+                })
+
+    def test_qualifying_bill_outside_report_window_still_reduces_minimum(self):
+        item = card(bills=[bill("100", 2)], minimum="25", extra="0",
+                    bill_payment_timing="days_before_due",
+                    bill_payment_days_before=3)
+        self.assertEqual(planned_card_payments(
+            item, date(2026, 12, 10), date(2026, 12, 10)
+        ), [])
+
+    def test_zero_minimum_and_zero_bill_have_no_minimum_event(self):
+        item = card(bills=[bill("0", 2)], minimum="0", extra="0")
+        self.assertEqual(self.events(item), [])
 
     def test_account_filter_and_multiple_cards(self):
         first = card(minimum="25", extra="0", account=1, card_id=1)
@@ -176,8 +237,8 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertIn("Cash Flow", html)
         # Nov 2 card charge is paid in December; December 2 charge
         # belongs to the next statement and is not directly deducted.
-        self.assertIn("Ending: $525.00", html)
-        # 1000 - 300 rent - 100 planned bill payment - 25 minimum - 50 extra
+        self.assertIn("Ending: $550.00", html)
+        # 1000 - 300 rent - 100 planned bill payment - 50 extra
 
     def test_new_card_scheduling_settings_are_saved(self):
         from src.models import Account, CreditCard
@@ -261,7 +322,6 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertEqual(
             {e["kind"]: e["date"] for e in events},
             {"extra": date(2026, 12, 8),
-             "minimum": date(2026, 12, 10),
              "bill_related": date(2026, 12, 7)},
         )
 
@@ -296,7 +356,7 @@ class CashFlowRouteTests(unittest.TestCase):
         cashflow = self.app.test_client().get(
             f"/report?year=2026&month=12&starting_balance_{checking.id}=1000"
         ).get_data(as_text=True)
-        self.assertIn("Ending: $825.00", cashflow)
+        self.assertIn("Ending: $850.00", cashflow)
         # Switch to bank funding and confirm the card association clears.
         form["payment_method"] = f"account:{savings.id}"
         self.assertEqual(self.app.test_client().post(
@@ -353,8 +413,8 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertIn("Visa", html)
         self.assertIn("$140.00", html)
         self.assertIn("Total", html)
-        self.assertIn("Ending: $1785.00", html)
-        self.assertIn("$-215.00", html)
+        self.assertIn("Ending: $1810.00", html)
+        self.assertIn("$-190.00", html)
 
     def test_cash_flow_expands_income_bills_and_payment_types(self):
         from src.models import Account, Bill, CreditCard, Income
@@ -392,8 +452,8 @@ class CashFlowRouteTests(unittest.TestCase):
         self.assertIn("View credit card payments for 2026-11-07", html)
         self.assertIn("Visa &mdash; Bill-related: $100.00", html)
         self.assertIn("Visa &mdash; Extra: $50.00", html)
-        self.assertIn("Visa &mdash; Minimum: $25.00", html)
-        self.assertIn("Ending: $2525.00", html)
+        self.assertNotIn("Visa &mdash; Minimum: $25.00", html)
+        self.assertIn("Ending: $2550.00", html)
 
     def test_cash_flow_only_deducts_payments_from_linked_account(self):
         from src.models import Account, CreditCard
