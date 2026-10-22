@@ -63,6 +63,17 @@ class CreditCardDeactivationRouteTests(unittest.TestCase):
         self.post("deactivate")
         self.assertTrue(self.card.is_active)
 
+    def test_dashboard_renders_with_credit_card_forecast(self):
+        response = self.app.test_client().get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Credit", response.data)
+
+    def test_edit_card_page_renders_forecast_settings(self):
+        response = self.app.test_client().get(
+            f"/credit-cards/{self.card.id}/edit")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'name="credit_limit"', response.data)
+
     def test_add_card_page_renders_without_existing_cards(self):
         response = self.app.test_client().get("/credit-cards")
         self.assertEqual(response.status_code, 200)
