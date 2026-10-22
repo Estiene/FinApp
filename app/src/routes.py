@@ -251,6 +251,25 @@ def validate_credit_card_form(card_id=None):
     if balance_as_of > date.today():
         raise ValueError("Balance date cannot be in the future.")
 
+    optional_amounts = {}
+    for field in ('annual_percentage_rate', 'credit_limit', 'promotional_apr'):
+        raw = request.form.get(field, '').strip()
+        if not raw:
+            optional_amounts[field] = None
+            continue
+        value = Decimal(raw)
+        ceiling = Decimal('100') if field != 'credit_limit' else Decimal('9999999999.99')
+        if (not value.is_finite() or value < 0 or value > ceiling
+                or value != value.quantize(Decimal('0.01'))
+                or (field == 'credit_limit' and value == 0)):
+            raise ValueError(f"Invalid value for {field}.")
+        optional_amounts[field] = value
+
+    promo_end_raw = request.form.get('promotional_apr_end_date', '').strip()
+    promo_end = date.fromisoformat(promo_end_raw) if promo_end_raw else None
+    if (optional_amounts['promotional_apr'] is None) != (promo_end is None):
+        raise ValueError("Promotional APR and expiration date must be provided together.")
+
     return dict(
         name=name,
         payment_account_id=account.id,
@@ -260,6 +279,8 @@ def validate_credit_card_form(card_id=None):
         extra_payment_day=extra_day,
         bill_payment_timing=timing,
         bill_payment_days_before=days_before,
+        promotional_apr_end_date=promo_end,
+        **optional_amounts,
         **amounts
     )
 
