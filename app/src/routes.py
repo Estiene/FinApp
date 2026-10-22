@@ -697,12 +697,18 @@ def report():
 
         # Reuse the same recurring bill engine as the dashboard.
         bill_map = {}
+        card_charge_map = {}
         for b in acct.bills:
-            if b.credit_card_id is not None:
-                # The charge increases card debt, not the bank account outflow.
-                continue
             for due in bill_dates(b, start_date, last_day):
-                bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
+                if b.credit_card_id is not None:
+                    # Display the charge, but do not subtract it from checking.
+                    card_charge_map.setdefault(due, []).append({
+                        'bill': b.name,
+                        'card': b.credit_card.name,
+                        'amount': float(b.amount),
+                    })
+                else:
+                    bill_map[due] = bill_map.get(due, 0.0) + float(b.amount)
 
         card_payment_map = planned_payments_for_account(
             cards, acct.id, start_date, last_day
@@ -716,6 +722,8 @@ def report():
             inc_amt  = income_map.get(current, 0.0)
             bill_amt = bill_map.get(current,  0.0)
             card_amt = float(card_payment_map.get(current, 0))
+            charges = card_charge_map.get(current, [])
+            charge_amt = sum(item['amount'] for item in charges)
             net      = inc_amt - bill_amt - card_amt
             bal     += net
 
@@ -724,6 +732,8 @@ def report():
                 'income':  inc_amt,
                 'bills':   bill_amt,
                 'credit_card_payments': card_amt,
+                'credit_card_charges': charge_amt,
+                'charge_details': charges,
                 'net':     net,
                 'balance': round(bal, 2)
             })
@@ -731,7 +741,14 @@ def report():
         report_data.append({
             'account':          acct,
             'starting_balance': sb,
-            'days':             days
+            'days':             days,
+            'totals': {
+                'income': round(sum(day['income'] for day in days), 2),
+                'bills': round(sum(day['bills'] for day in days), 2),
+                'credit_card_payments': round(sum(day['credit_card_payments'] for day in days), 2),
+                'credit_card_charges': round(sum(day['credit_card_charges'] for day in days), 2),
+                'net': round(sum(day['net'] for day in days), 2),
+            }
         })
 
     # 7. Prev/Next month for header navigation
