@@ -72,19 +72,19 @@
   </div>
   <div class="col-md-4">
     <label class="form-label">Standard APR (%) (optional)</label>
-    <input type="number" name="annual_percentage_rate" class="form-control" min="0" max="100" step="0.01" value="{{ card.annual_percentage_rate if card.annual_percentage_rate is not none else '' }}">
+    <input type="number" name="annual_percentage_rate" class="form-control" min="0" max="100" step="0.01" value="">
   </div>
   <div class="col-md-4">
     <label class="form-label">Credit Limit ($) (optional)</label>
-    <input type="number" name="credit_limit" class="form-control" min="0.01" step="0.01" value="{{ card.credit_limit if card.credit_limit is not none else '' }}">
+    <input type="number" name="credit_limit" class="form-control" min="0.01" step="0.01" value="">
   </div>
   <div class="col-md-4">
     <label class="form-label">Promotional APR (%) (optional)</label>
-    <input type="number" name="promotional_apr" class="form-control" min="0" max="100" step="0.01" value="{{ card.promotional_apr if card.promotional_apr is not none else '' }}">
+    <input type="number" name="promotional_apr" class="form-control" min="0" max="100" step="0.01" value="">
   </div>
   <div class="col-md-4">
     <label class="form-label">Promotional APR Ends (optional)</label>
-    <input type="date" name="promotional_apr_end_date" class="form-control" value="{{ card.promotional_apr_end_date.isoformat() if card.promotional_apr_end_date else '' }}">
+    <input type="date" name="promotional_apr_end_date" class="form-control" value="">
     <div class="form-text">Enter both promotional APR and end date, or leave both blank.</div>
   </div>
   <div class="col-12">
