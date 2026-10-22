@@ -194,6 +194,18 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             "spendable_balance": (projected_balance - reserved).quantize(CENT),
         })
 
+    from .cash_flow_projection import daily_account_projection
+    for summary in account_summaries:
+        future = daily_account_projection(
+            summary["account"], today, today + timedelta(days=30), credit_cards
+        )
+        negative = [row for row in future if row["negative"]]
+        summary["next_30_days_low"] = min(
+            (row["balance"] for row in future), default=None
+        )
+        summary["first_negative_date"] = negative[0]["date"] if negative else None
+        summary["next_30_days"] = future
+
     credit_card_summaries = []
 
     for card in credit_cards:
