@@ -1,0 +1,34 @@
+# Isolated Stage 5 evaluation: no production volumes or public web ports.
+# Always use -p finapp-stage5-test when starting this file.
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: finapp
+      POSTGRES_PASSWORD: finapp_stage5_local_only
+      POSTGRES_DB: finapp
+    volumes:
+      - stage5-test-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finapp -d finapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://finapp:finapp_stage5_local_only@db:5432/finapp
+      SECRET_KEY: stage5-isolated-test-not-for-production
+      FLASK_APP: src.app:create_app
+      FLASK_ENV: development
+      DEBUG: '0'
+    command: flask run --host=0.0.0.0 --port=5000
+    ports:
+      - "127.0.0.1:5001:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  stage5-test-db:
