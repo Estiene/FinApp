@@ -25,6 +25,7 @@ const { chromium } = require('playwright');
   await page.waitForLoadState('load');
   await page.goto('http://127.0.0.1:5088/balance-history');
   assert(await page.locator('details').filter({hasText:'Saved forecast #1'}).locator('table').textContent()===firstForecast,'historical forecast stable after balance/early pay changes');
+  await page.locator('details').filter({hasText:'Actual balance observations'}).locator('summary').click();
   assert((await page.locator('body').innerText()).includes('$123.45'),'actual observation recorded');
   await page.getByRole('button',{name:'Save forecast',exact:true}).click();
   await page.waitForLoadState('load');
