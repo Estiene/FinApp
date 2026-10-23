@@ -48,6 +48,26 @@ class PlannedPaymentTests(unittest.TestCase):
     def events(self, item):
         return planned_card_payments(item, self.START, self.END)
 
+    def test_overlapping_confirmed_due_dates_preserve_both_cycle_payments(self):
+        # Issuer due-date overrides can put two statement obligations on
+        # one day; they must be added rather than one replacing the other.
+        statements = [
+            statement(date(2026, 10, 15), "100", due=date(2026, 12, 10)),
+            statement(date(2026, 11, 15), "100", due=date(2026, 12, 10)),
+        ]
+        item = card(bills=[bill("100", 2)], statements=statements,
+                    minimum="0", extra="50")
+        events = self.events(item)
+        self.assertEqual(
+            next(e["amount"] for e in events if
+                 e["date"] == date(2026, 12, 10) and e["kind"] == "bill_related"),
+            Decimal("200.00"),
+        )
+        self.assertEqual(
+            sum(e["amount"] for e in events if e["kind"] == "extra"),
+            Decimal("50.00"),
+        )
+
     def test_estimated_cycle_uses_full_recurring_bill_total(self):
         item = card(bills=[bill("100", 2), bill("100", 12)])
         events = self.events(item)
