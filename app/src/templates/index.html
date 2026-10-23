@@ -156,6 +156,15 @@
                   <a href="{{ url_for('main.credit_card_statements', card_id=summary.card.id) }}">Review statements</a>
                 </div>
               {% endif %}
+              {% if summary.card.promotional_apr is not none and summary.card.promotional_apr_end_date and today <= summary.card.promotional_apr_end_date %}
+                <div class="alert alert-info py-2" role="status">
+                  Promotional APR of {{ summary.card.promotional_apr }}% ends
+                  {{ summary.card.promotional_apr_end_date.strftime('%b %-d, %Y') }}.
+                  {% if summary.payoff_estimate is none %}
+                    Payoff cannot be reliably estimated at a single APR across the promotional-rate change.
+                  {% endif %}
+                </div>
+              {% endif %}
               <div class="small text-body-secondary">
                 Projected card balance
               </div>
@@ -237,8 +246,9 @@
                 {{ summary.card.balance_as_of.strftime('%b %-d, %Y') }}
               </div>
               <div class="form-text">
-                Suggested payments are estimates and are not deducted
-                from checking until recorded as completed.
+                Suggested payments are planning estimates. Future scheduled card
+                payments are included as projected checking outflows; past payments
+                reduce the displayed checking balance only when recorded as completed.
               </div>
             </div>
           </div>
