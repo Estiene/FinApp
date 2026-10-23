@@ -59,9 +59,17 @@
     </form>
   </div>
 
+  <div class="mb-3">
+    <label for="cash-search" class="form-label">Find bill by name or amount</label>
+    <input id="cash-search" type="search" class="form-control" placeholder="Bill name or $30.00">
+    <button id="clear-search" type="button" class="btn btn-outline-secondary mt-2">Clear search</button>
+    <button id="reset-simulation" type="button" class="btn btn-outline-secondary mt-2">Reset simulation balances</button>
+    <p class="form-text">Search shows days containing matching bills or card charges. Balances and totals still reflect the full forecast. Starting balances stay in this tab until its session ends; dates are not retained.</p>
+    <p id="search-status" role="status"></p>
+  </div>
   <!-- Per-account expandable reports -->
   {% for section in report_data %}
-  <details class="mb-4">
+  <details class="mb-4 cash-section">
     <summary class="h5">
       {{ section.account.name }}
       &ndash; Start: ${{ '%.2f'|format(section.starting_balance) }}
@@ -83,7 +91,7 @@
       </thead>
       <tbody>
         {% for d in section.days %}
-        <tr>
+        <tr class="cash-day" data-search="{% for item in d.bill_details %}{{ item.name }} {{ '%.2f'|format(item.amount) }}; {% endfor %}{% for item in d.charge_details %}{{ item.bill }} {{ '%.2f'|format(item.amount) }}; {% endfor %}">
           <td>{{ d.date.strftime('%-m/%-d') }}</td>
           <td>
             {% if d.income_details %}
@@ -160,7 +168,7 @@
       </tbody>
       <tfoot class="table-group-divider fw-bold">
         <tr>
-          <th scope="row">Total</th>
+          <th scope="row">Total (full forecast)</th>
           <td>${{ '%.2f'|format(section.totals.income) }}</td>
           <td>${{ '%.2f'|format(section.totals.bills) }}</td>
           <td>${{ '%.2f'|format(section.totals.credit_card_charges) }}</td>
@@ -172,4 +180,54 @@
     </table>
   </details>
   {% endfor %}
+  <script>
+  (() => {
+    const inputs = [...document.querySelectorAll('input[name^="starting_balance_"]')];
+    const key = 'finapp.cashflow.balances.v1';
+    const params = new URLSearchParams(location.search);
+    let saved = {};
+    try { saved = JSON.parse(sessionStorage.getItem(key) || '{}'); } catch (_) {}
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) saved = {};
+    let restore = false;
+    inputs.forEach(input => {
+      if (params.has(input.name)) saved[input.name] = input.value;
+      else if (typeof saved[input.name] === 'string' && Number.isFinite(Number(saved[input.name]))) {
+        params.set(input.name, saved[input.name]); restore = true;
+      }
+    });
+    function store() { try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch (_) {} }
+    store();
+    if (restore) { location.replace(location.pathname + '?' + params.toString()); return; }
+    inputs[0]?.form.addEventListener('submit', () => { inputs.forEach(input => { saved[input.name] = input.value; }); store(); });
+    document.getElementById('reset-simulation').addEventListener('click', () => {
+      try { sessionStorage.removeItem(key); } catch (_) {}
+      inputs.forEach(input => params.delete(input.name));
+      location.assign(location.pathname + '?' + params.toString());
+    });
+    const search = document.getElementById('cash-search');
+    const sections = [...document.querySelectorAll('.cash-section')];
+    let previousOpen = null;
+    function filter() {
+      const query = search.value.trim().toLowerCase().replace(/[$,]/g, '');
+      if (query && !previousOpen) previousOpen = sections.map(section => section.open);
+      let count = 0;
+      sections.forEach((section, index) => {
+        let matches = 0;
+        section.querySelectorAll('.cash-day').forEach(row => {
+          row.hidden = !!query && !row.dataset.search.toLowerCase().includes(query);
+          if (!row.hidden) matches++;
+          row.querySelectorAll('td details').forEach(detail => { if (query) detail.open = true; });
+        });
+        section.hidden = !!query && matches === 0;
+        if (query && matches) section.open = true;
+        else if (!query && previousOpen) section.open = previousOpen[index];
+        count += matches;
+      });
+      document.getElementById('search-status').textContent = query ? count + ' matching days. Full forecast balances and totals shown.' : '';
+      if (!query) previousOpen = null;
+    }
+    search.addEventListener('input', filter);
+    document.getElementById('clear-search').addEventListener('click', () => { search.value = ''; filter(); search.focus(); });
+  })();
+  </script>
 {% endblock %}

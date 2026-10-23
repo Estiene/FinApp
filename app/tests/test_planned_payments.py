@@ -48,6 +48,26 @@ class PlannedPaymentTests(unittest.TestCase):
     def events(self, item):
         return planned_card_payments(item, self.START, self.END)
 
+    def test_overlapping_confirmed_due_dates_preserve_both_cycle_payments(self):
+        # Issuer due-date overrides can put two statement obligations on
+        # one day; they must be added rather than one replacing the other.
+        statements = [
+            statement(date(2026, 10, 15), "100", due=date(2026, 12, 10)),
+            statement(date(2026, 11, 15), "100", due=date(2026, 12, 10)),
+        ]
+        item = card(bills=[bill("100", 2)], statements=statements,
+                    minimum="0", extra="50")
+        events = self.events(item)
+        self.assertEqual(
+            next(e["amount"] for e in events if
+                 e["date"] == date(2026, 12, 10) and e["kind"] == "bill_related"),
+            Decimal("200.00"),
+        )
+        self.assertEqual(
+            sum(e["amount"] for e in events if e["kind"] == "extra"),
+            Decimal("50.00"),
+        )
+
     def test_estimated_cycle_uses_full_recurring_bill_total(self):
         item = card(bills=[bill("100", 2), bill("100", 12)])
         events = self.events(item)
@@ -165,6 +185,14 @@ class PlannedPaymentTests(unittest.TestCase):
     def test_zero_minimum_and_zero_bill_have_no_minimum_event(self):
         item = card(bills=[bill("0", 2)], minimum="0", extra="0")
         self.assertEqual(self.events(item), [])
+
+    def test_missing_account_id_never_collects_unlinked_card_payments(self):
+        unlinked = card(account=None, minimum="25", extra="0")
+        self.assertEqual(
+            planned_payments_for_account(
+                [unlinked], None, self.START, self.END),
+            {},
+        )
 
     def test_account_filter_and_multiple_cards(self):
         first = card(minimum="25", extra="0", account=1, card_id=1)

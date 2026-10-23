@@ -1,0 +1,84 @@
+name: FinApp tests
+
+on:
+  push:
+    branches:
+      - main
+      - feature/stage-5c-5d-forecasting-dashboard
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: finapp_test
+          POSTGRES_PASSWORD: finapp_test
+          POSTGRES_DB: finapp_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finapp_test -d finapp_migration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: app/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate isolated Docker Compose configuration
+        run: docker compose -p finapp-stage5-test -f ../docker-compose.stage5-test.yml config -q
+      - name: Verify isolated Compose cannot expose production ports or volumes
+        working-directory: .
+        run: |
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml config --format json > /tmp/finapp-stage5-compose.json
+          python - <<'PY'
+          import json
+          with open("/tmp/finapp-stage5-compose.json", encoding="utf-8") as source:
+              config = json.load(source)
+          assert config["name"] == "finapp-stage5-test"
+          services = config["services"]
+          assert set(services) == {"db", "web"}
+          assert not services["db"].get("ports"), "Database must not publish a host port"
+          ports = services["web"].get("ports", [])
+          assert len(ports) == 1
+          assert ports[0]["host_ip"] == "127.0.0.1"
+          assert int(ports[0]["published"]) == 5001
+          assert int(ports[0]["target"]) == 5000
+          mounts = services["db"].get("volumes", [])
+          assert len(mounts) == 1
+          assert mounts[0]["type"] == "volume"
+          assert mounts[0]["source"].endswith("stage5-test-db")
+          assert mounts[0]["target"] == "/var/lib/postgresql/data"
+          PY
+      - name: Smoke-test isolated PostgreSQL container
+        working-directory: .
+        run: |
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml up -d --wait db
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec -T db pg_isready -U finapp -d finapp
+      - name: Tear down isolated PostgreSQL smoke test
+        if: always()
+        working-directory: .
+        run: docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml down -v --remove-orphans
+      - name: Run unit and route tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify migration upgrade and downgrade on PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg2://finapp_test:finapp_test@localhost:5432/finapp_migration_test
+          FINAPP_MIGRATION_TEST: '1'
+        run: python -m unittest discover -s tests -p test_migration_upgrade.py -v

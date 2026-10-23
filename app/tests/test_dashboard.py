@@ -32,6 +32,16 @@ def account(name, starting_balance="1000.00", balance_as_of=None, incomes=None, 
     )
 
 
+def card_fixture(**values):
+    defaults = dict(
+        id=1, statement_close_day=15, payment_due_day=10,
+        extra_payment_day=None, bill_payment_timing="due_date",
+        bill_payment_days_before=0,
+    )
+    defaults.update(values)
+    return SimpleNamespace(**defaults)
+
+
 class DashboardDateTests(unittest.TestCase):
     def test_weekly_dates_follow_original_payday_anchor(self):
         item = income("weekly", next_pay=date(2026, 10, 5))
@@ -93,6 +103,44 @@ class DashboardProjectionTests(unittest.TestCase):
             Decimal("1900.00"),
         )
 
+    def test_unlinked_recorded_card_payment_does_not_reduce_unknown_account(self):
+        today = date(2026, 10, 21)
+        acct = account(
+            "Checking", starting_balance="1000.00",
+            balance_as_of=date(2026, 10, 1),
+        )
+        statement = SimpleNamespace(
+            statement_close_date=date(2026, 9, 15),
+            payment_due_date=date(2026, 10, 10),
+            statement_balance=Decimal("200"),
+            actual_payment=Decimal("100"),
+            payment_date=date(2026, 10, 10),
+            planned_payment=None, payments=[],
+        )
+        unlinked = card_fixture(
+            balance=Decimal("500"), balance_as_of=today,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("0"),
+            payment_account_id=None, statements=[statement], bills=[],
+        )
+        result = build_dashboard_data([acct], today=today, credit_cards=[unlinked])
+        self.assertEqual(
+            result["account_summaries"][0]["projected_balance"],
+            Decimal("1000.00"),
+        )
+
+    def test_unlinked_card_does_not_reserve_from_account_without_id(self):
+        today = date(2026, 10, 21)
+        acct = account("Checking", starting_balance="1000.00", balance_as_of=today)
+        unlinked = card_fixture(
+            balance=Decimal("500"), balance_as_of=today,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+            payment_account_id=None, statements=[], bills=[],
+        )
+        result = build_dashboard_data([acct], today=today, credit_cards=[unlinked])
+        summary = result["account_summaries"][0]
+        self.assertEqual(summary["reserved_for_credit_cards"], Decimal("0.00"))
+        self.assertEqual(summary["spendable_balance"], Decimal("1000.00"))
+
     def test_credit_card_reservation_reduces_spendable_not_projected_balance(self):
         today = date(2026, 10, 21)
 
@@ -112,7 +160,7 @@ class DashboardProjectionTests(unittest.TestCase):
             payment_date=None,
         )
 
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("860.00"),
             balance_as_of=today,
             minimum_payment=Decimal("40.00"),
@@ -156,7 +204,7 @@ class DashboardProjectionTests(unittest.TestCase):
                 actual_payment=None,
                 payment_date=None,
             )
-            return SimpleNamespace(
+            return card_fixture(
                 balance=Decimal(balance),
                 balance_as_of=today,
                 minimum_payment=Decimal(minimum),
@@ -201,7 +249,7 @@ class DashboardProjectionTests(unittest.TestCase):
             actual_payment=None,
             payment_date=None,
         )
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("860.00"),
             balance_as_of=today,
             minimum_payment=Decimal("40.00"),
@@ -238,7 +286,7 @@ class DashboardProjectionTests(unittest.TestCase):
             actual_payment=Decimal("140.00"),
             payment_date=date(2026, 10, 15),
         )
-        card = SimpleNamespace(
+        card = card_fixture(
             balance=Decimal("1000.00"),
             balance_as_of=date(2026, 10, 1),
             minimum_payment=Decimal("40.00"),

@@ -209,6 +209,8 @@ def recorded_payments_for_account(
 ):
     """Total completed card payments from an account within a date range."""
     total = ZERO
+    if account_id is None:
+        return ZERO
 
     for card in credit_cards:
         if card.payment_account_id != account_id:

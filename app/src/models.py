@@ -32,6 +32,9 @@ class Bill(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     owner = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
+    inactive_from = db.Column(db.Date, nullable=True)
+    pauses = db.relationship('BillPause', cascade='all, delete-orphan')
     due_day = db.Column(db.Integer, nullable=False)
     # Existing records default to monthly; interval schedules use next_due as anchor.
     frequency = db.Column(db.String(20), nullable=False, default="monthly")
@@ -51,6 +54,14 @@ class Bill(db.Model):
         'CreditCard',
         back_populates='bills',
     )
+
+class BillPause(db.Model):
+    __tablename__ = 'bill_pauses'
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+
 
 class Income(db.Model):
     __tablename__ = 'incomes'
@@ -100,6 +111,13 @@ class CreditCard(db.Model):
     bill_payment_days_before = db.Column(
         db.Integer, nullable=False, default=0, server_default="0",
     )
+
+    # Optional forecasting inputs. NULL means not supplied by the user.
+    annual_percentage_rate = db.Column(db.Numeric(5, 2), nullable=True)
+    credit_limit = db.Column(db.Numeric(12, 2), nullable=True)
+    promotional_apr = db.Column(db.Numeric(5, 2), nullable=True)
+    promotional_apr_end_date = db.Column(db.Date, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
 
     payment_account_id = db.Column(
         db.Integer,

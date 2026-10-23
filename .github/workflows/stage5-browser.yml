@@ -1,0 +1,30 @@
+name: Stage 5 browser checks
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/stage-5c-5d-forecasting-dashboard]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r app/requirements.txt
+      - run: npm install --prefix /tmp/finapp-browser playwright@1.56.1
+      - run: /tmp/finapp-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Run isolated browser checks
+        run: |
+          python app/tests/serve_stage5_browser.py > /tmp/finapp-browser-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5088/ > /dev/null; then break; fi
+            sleep 1
+          done
+          NODE_PATH=/tmp/finapp-browser/node_modules node app/tests/browser_stage5.cjs

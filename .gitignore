@@ -9,3 +9,9 @@ venv/
 # Local environment and test artifacts
 .env
 .pytest_cache/
+
+# Private database dumps and local backups (never commit financial data)
+*.dump
+*.backup
+*.sql.gz
+finapp-stage5-copy.sql

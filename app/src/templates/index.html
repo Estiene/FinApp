@@ -28,6 +28,11 @@
     </div>
   </div>
 
+  <div class="btn-group mb-3" role="group" aria-label="Dashboard account type">
+    <button class="btn btn-outline-primary" type="button" data-dashboard-view="bank">Bank Accounts</button>
+    <button class="btn btn-outline-primary" type="button" data-dashboard-view="card">Credit Cards</button>
+  </div>
+  <section id="dashboard-bank">
   <div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
     <div>
       <h2 class="h4 mb-1">Projected Balance Today</h2>
@@ -73,6 +78,40 @@
               </div>
             </div>
 
+            <div class="border-top pt-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="text-body-secondary">Lowest projected balance (next 30 days)</span>
+                {% if summary.next_30_days_low is not none %}
+                  <strong class="{% if summary.next_30_days_low < 0 %}text-danger{% endif %}">
+                    ${{ '{:,.2f}'.format(summary.next_30_days_low) }}
+                  </strong>
+                {% else %}<span class="text-body-secondary">No future dates available</span>{% endif %}
+              </div>
+              {% if summary.first_negative_date %}
+                <div class="alert alert-warning py-2 mt-2 mb-0" role="alert">
+                  Projected negative balance starting {{ summary.first_negative_date.strftime('%b %-d, %Y') }}.
+                </div>
+              {% endif %}
+              <details class="mt-2">
+                <summary class="small">Daily balance forecast</summary>
+                <div class="table-responsive mt-2" style="max-height:240px;overflow-y:auto">
+                  <table class="table table-sm">
+                    <thead><tr><th>Date</th><th class="text-end">Change</th><th class="text-end">Balance</th></tr></thead>
+                    <tbody>
+                    {% for day in summary.next_30_days %}
+                      <tr class="{% if day.negative %}table-warning{% endif %}">
+                        <td>{{ day.date.strftime('%b %-d') }}</td>
+                        <td class="text-end">${{ '{:,.2f}'.format(day.change) }}</td>
+                        <td class="text-end">${{ '{:,.2f}'.format(day.balance) }}</td>
+                      </tr>
+                    {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="form-text">Forecast uses scheduled transactions and planned card payments; actual transactions may differ.</div>
+              </details>
+            </div>
+
             <form method="post" action="{{ url_for('main.update_account_balance', account_id=summary.account.id) }}" class="border-top pt-3">
               {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <div class="row g-2 align-items-end">
@@ -99,6 +138,8 @@
       <a href="{{ url_for('main.accounts') }}" class="btn btn-primary">Create an account</a>
     </div>
   {% endif %}
+  </section>
+  <section id="dashboard-card">
   <div class="d-flex justify-content-between align-items-center mt-5 mb-3">
     <div>
       <h2 class="h4 mb-1">Credit Cards</h2>
@@ -114,8 +155,25 @@
         <div class="col-xl-6">
           <div class="card h-100 shadow-sm">
             <div class="card-body">
-              <h3 class="h5 mb-3">{{ summary.card.name }}</h3>
+              <h3 class="h5 mb-3">{{ summary.card.name }} {% if not summary.card.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}</h3>
+              <p class="small text-body-secondary">Credit limit: {% if summary.card.credit_limit is not none %}${{ '{:,.2f}'.format(summary.card.credit_limit) }}{% else %}Not set{% endif %}</p>
+              {% if not summary.card.is_active %}<p class="small text-body-secondary">Inactive card; future payments are not projected. Utilization below describes this card only.</p>{% endif %}
 
+              {% if summary.statement_reminder.status in ('missing', 'stale', 'overdue', 'upcoming') %}
+                <div class="alert {% if summary.statement_reminder.status == 'overdue' %}alert-danger{% else %}alert-warning{% endif %} py-2" role="status">
+                  {{ summary.statement_reminder.message }}
+                  <a href="{{ url_for('main.credit_card_statements', card_id=summary.card.id) }}">Review statements</a>
+                </div>
+              {% endif %}
+              {% if summary.card.promotional_apr is not none and summary.card.promotional_apr_end_date and today <= summary.card.promotional_apr_end_date %}
+                <div class="alert alert-info py-2" role="status">
+                  Promotional APR of {{ summary.card.promotional_apr }}% ends
+                  {{ summary.card.promotional_apr_end_date.strftime('%b %-d, %Y') }}.
+                  {% if summary.payoff_estimate is none %}
+                    Payoff is unavailable with the current payment settings.
+                  {% endif %}
+                </div>
+              {% endif %}
               <div class="small text-body-secondary">
                 Projected card balance
               </div>
@@ -161,13 +219,45 @@
                 </div>
               </div>
 
+              <div class="border-top mt-3 pt-3">
+                <div class="row g-2">
+                  <div class="col-6">
+                    <div class="small text-body-secondary">Credit utilization</div>
+                    <div class="fw-semibold">
+                      {% if summary.utilization_pct is not none %}
+                        {{ summary.utilization_pct }}%
+                      {% else %}Add a credit limit{% endif %}
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="small text-body-secondary">APR used for estimate</div>
+                    <div class="fw-semibold">
+                      {% if summary.effective_apr is not none %}
+                        {{ summary.effective_apr }}%
+                      {% else %}Add an APR{% endif %}
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="small text-body-secondary">Estimated payoff</div>
+                    {% if summary.payoff_estimate %}
+                      <div class="fw-semibold">{{ summary.payoff_estimate.months }} months ·
+                        ${{ '{:,.2f}'.format(summary.payoff_estimate.interest) }} estimated interest
+                      </div>
+                    {% else %}
+                      <div class="text-body-secondary small">Not available with the current payment, APR, or promotional period.</div>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="form-text">Simplified monthly-interest estimate; uses promotional APR for periods starting on or before its expiration, then regular APR. Assumes fixed payments and no new charges. Issuer calculations may differ.</div>
+              </div>
               <div class="small text-body-secondary mt-3">
                 Balance snapshot:
                 {{ summary.card.balance_as_of.strftime('%b %-d, %Y') }}
               </div>
               <div class="form-text">
-                Suggested payments are estimates and are not deducted
-                from checking until recorded as completed.
+                Suggested payments are planning estimates. Future scheduled card
+                payments are included as projected checking outflows; past payments
+                reduce the displayed checking balance only when recorded as completed.
               </div>
             </div>
           </div>
@@ -179,4 +269,19 @@
       No credit cards have been added yet.
     </p>
   {% endif %}
+  </section>
+  <script>
+  (() => {
+    const buttons = document.querySelectorAll('[data-dashboard-view]');
+    function select(view) {
+      if (!['bank', 'card'].includes(view)) view = 'bank';
+      ['bank', 'card'].forEach(kind => { document.getElementById('dashboard-' + kind).hidden = kind !== view; });
+      buttons.forEach(button => { const active = button.dataset.dashboardView === view; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+      try { sessionStorage.setItem('finapp.dashboard.view', view); } catch (_) {}
+    }
+    buttons.forEach(button => button.addEventListener('click', () => select(button.dataset.dashboardView)));
+    let view = 'bank'; try { view = sessionStorage.getItem('finapp.dashboard.view') || view; } catch (_) {}
+    select(view);
+  })();
+  </script>
 {% endblock %}

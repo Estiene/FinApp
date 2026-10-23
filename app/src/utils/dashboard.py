@@ -3,6 +3,7 @@
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from dateutil.relativedelta import relativedelta
 from .credit_cards import (
     recorded_payments_for_account,
@@ -84,7 +85,19 @@ def income_dates(income, start_date, end_date):
 
 
 def bill_dates(bill, start_date, end_date):
+    """Preserve prior pause periods when a recurring bill is reactivated."""
+    dates = _bill_dates(bill, start_date, end_date)
+    pauses = getattr(bill, 'pauses', ())
+    return [day for day in dates if not any(p.start_date <= day < p.end_date for p in pauses)]
+
+
+def _bill_dates(bill, start_date, end_date):
     """Inclusive occurrences for monthly or anchored interval-based bills."""
+    if not getattr(bill, "is_active", True):
+        cutoff = getattr(bill, "inactive_from", None)
+        if cutoff is None:
+            return []
+        end_date = min(end_date, cutoff - timedelta(days=1))
     if start_date > end_date:
         return []
     frequency = getattr(bill, "frequency", None) or "monthly"
@@ -163,20 +176,20 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
                     bill_dates(bill, projection_start, today)
                 )
                 projected_balance -= _money(bill.amount) * count
-                        # Subtract completed credit card payments after the balance snapshot.
             # Subtract completed card payments after the balance snapshot.
             if credit_cards:
                 projected_balance -= recorded_payments_for_account(
                     credit_cards=credit_cards,
-                    account_id=account.id,
+                    account_id=getattr(account, "id", None),
                     start_date=projection_start,
                     end_date=today,
                 )
 
         reserved = ZERO
 
+        account_id = getattr(account, "id", None)
         for card in credit_cards:
-            if card.payment_account_id != getattr(account, "id", None):
+            if account_id is None or card.payment_account_id != account_id:
                 continue
 
             projected_debt = projected_card_balance(card, today)
@@ -194,10 +207,47 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             "spendable_balance": (projected_balance - reserved).quantize(CENT),
         })
 
+    from .cash_flow_projection import daily_account_projection
+    for summary in account_summaries:
+        # Anchor the forward-looking forecast to today's displayed balance.
+        # Past planned card payments are not actual bank transactions and must
+        # not be replayed from the older account snapshot.
+        account = summary["account"]
+        forecast_account = SimpleNamespace(
+            id=getattr(account, "id", None),
+            starting_balance=summary["projected_balance"],
+            balance_as_of=today,
+            incomes=account.incomes,
+            bills=account.bills,
+        )
+        future = daily_account_projection(
+            forecast_account, today, today + timedelta(days=30), credit_cards
+        )
+        negative = [row for row in future if row["negative"]]
+        summary["next_30_days_low"] = min(
+            (row["balance"] for row in future), default=None
+        )
+        summary["first_negative_date"] = negative[0]["date"] if negative else None
+        summary["next_30_days"] = future
+
     credit_card_summaries = []
 
+    from .card_forecast import utilization, payoff_estimate
+    from .statement_reminders import statement_reminder
     for card in credit_cards:
         projected_debt = projected_card_balance(card, today)
+
+        credit_limit = getattr(card, "credit_limit", None)
+        utilization_pct = utilization(projected_debt, credit_limit)
+        standard_apr = getattr(card, "annual_percentage_rate", None)
+        promo_apr = getattr(card, "promotional_apr", None)
+        promo_end = getattr(card, "promotional_apr_end_date", None)
+        # A promotional rate is only applied while it is currently valid.
+        # The payoff estimate switches to the regular rate after expiration.
+        effective_apr = (
+            promo_apr if promo_apr is not None and promo_end is not None
+            and today <= promo_end else standard_apr
+        )
 
         suggested = minimum_plus_extra_payment(
             outstanding_balance=projected_debt,
@@ -205,10 +255,21 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             extra_payment=card.extra_payment,
         )
 
+        payoff = None
+        if effective_apr is not None:
+            payoff = payoff_estimate(
+                projected_debt, standard_apr, suggested,
+                promotional_apr=promo_apr, promotional_end=promo_end, as_of=today,
+            )
+
         credit_card_summaries.append({
             "card": card,
             "projected_balance": projected_debt,
             "suggested_payment": suggested,
+            "utilization_pct": utilization_pct,
+            "effective_apr": effective_apr,
+            "payoff_estimate": payoff,
+            "statement_reminder": statement_reminder(card, today),
         })
 
     return {

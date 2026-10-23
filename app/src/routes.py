@@ -7,8 +7,9 @@ from decimal import Decimal, InvalidOperation
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
-from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
+from .models import db, Account, Bill, BillPause, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
+from .utils.credit_cards import projected_card_balance
 from .utils.planned_payments import planned_card_payments
 from calendar import monthrange
 
@@ -88,6 +89,9 @@ def build_bill(form, existing=None):
     except (KeyError, ValueError, InvalidOperation):
         raise ValueError("Enter a valid account and positive amount (up to two decimals).")
 
+    if card_id is not None and not selected_card.is_active:
+        raise ValueError("Inactive credit cards cannot receive recurring bills. Choose an active card or bank account.")
+
     name = form.get("name", "").strip()
     owner = form.get("owner", "").strip()
     if not name or not owner:
@@ -122,9 +126,16 @@ def build_bill(form, existing=None):
 
 def build_income(form, existing=None):
     """Fill an Income instance (new or existing) from form data."""
+    try:
+        amount = Decimal(form.get('amount', ''))
+        if not amount.is_finite() or amount < 0 or amount.as_tuple().exponent < -2:
+            raise ValueError
+    except (InvalidOperation, ValueError):
+        flash('Enter a nonnegative income amount with up to two decimals.', 'danger')
+        return None
     inc = existing or Income()
     inc.name       = form['name']
-    inc.amount     = form['amount']
+    inc.amount     = amount
     inc.frequency  = form['frequency']
     inc.account_id = int(form['account_id'])
 
@@ -251,6 +262,25 @@ def validate_credit_card_form(card_id=None):
     if balance_as_of > date.today():
         raise ValueError("Balance date cannot be in the future.")
 
+    optional_amounts = {}
+    for field in ('annual_percentage_rate', 'credit_limit', 'promotional_apr'):
+        raw = request.form.get(field, '').strip()
+        if not raw:
+            optional_amounts[field] = None
+            continue
+        value = Decimal(raw)
+        ceiling = Decimal('100') if field != 'credit_limit' else Decimal('9999999999.99')
+        if (not value.is_finite() or value < 0 or value > ceiling
+                or value != value.quantize(Decimal('0.01'))
+                or (field == 'credit_limit' and value == 0)):
+            raise ValueError(f"Invalid value for {field}.")
+        optional_amounts[field] = value
+
+    promo_end_raw = request.form.get('promotional_apr_end_date', '').strip()
+    promo_end = date.fromisoformat(promo_end_raw) if promo_end_raw else None
+    if (optional_amounts['promotional_apr'] is None) != (promo_end is None):
+        raise ValueError("Promotional APR and expiration date must be provided together.")
+
     return dict(
         name=name,
         payment_account_id=account.id,
@@ -260,6 +290,8 @@ def validate_credit_card_form(card_id=None):
         extra_payment_day=extra_day,
         bill_payment_timing=timing,
         bill_payment_days_before=days_before,
+        promotional_apr_end_date=promo_end,
+        **optional_amounts,
         **amounts
     )
 
@@ -288,6 +320,26 @@ def credit_cards():
     )
 
 
+@bp.route('/credit-cards/<int:card_id>/active', methods=['POST'])
+def set_credit_card_active(card_id):
+    """Archive a paid-off card without deleting its financial history."""
+    card = CreditCard.query.get_or_404(card_id)
+    action = request.form.get('action', '')
+    if action not in ('activate', 'deactivate'):
+        abort(400)
+    if action == 'deactivate':
+        if projected_card_balance(card, date.today()) != Decimal('0') or card.bills:
+            flash("Pay off the card and move its recurring bills before deactivating it.", "danger")
+            return redirect(url_for('main.credit_cards'))
+        card.is_active = False
+        flash(f"Credit card '{card.name}' deactivated; history was preserved.", "success")
+    else:
+        card.is_active = True
+        flash(f"Credit card '{card.name}' reactivated.", "success")
+    db.session.commit()
+    return redirect(url_for('main.credit_cards'))
+
+
 @bp.route('/credit-cards/<int:card_id>/edit', methods=['GET', 'POST'])
 def edit_credit_card(card_id):
     card = CreditCard.query.get_or_404(card_id)
@@ -299,6 +351,8 @@ def edit_credit_card(card_id):
                 setattr(card, field, value)
             db.session.commit()
             flash("Credit card updated successfully.", "success")
+            if request.form.get('save_action') == 'stay':
+                return redirect(url_for('main.edit_credit_card', card_id=card.id))
             return redirect(url_for('main.credit_cards'))
         except (ValueError, InvalidOperation) as error:
             db.session.rollback()
@@ -536,7 +590,7 @@ def delete_account(account_id):
 @bp.route('/bills/<int:bill_id>', methods=['GET', 'POST'])
 def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
-    cards = CreditCard.query.order_by(CreditCard.name).all()
+    cards = CreditCard.query.filter_by(is_active=True).order_by(CreditCard.name).all()
 
     if request.method == 'POST':
         existing = Bill.query.get_or_404(bill_id) if bill_id else None
@@ -549,6 +603,8 @@ def bills(bill_id):
         db.session.commit()
         action = 'Updated' if bill_id else 'Added'
         flash(f"{action} bill '{b.name}'.", 'success')
+        if bill_id and request.form.get('save_action') == 'stay':
+            return redirect(url_for('main.bills', bill_id=bill_id))
         return redirect(url_for('main.bills'))
 
     if bill_id:
@@ -557,6 +613,28 @@ def bills(bill_id):
 
     all_bills = Bill.query.order_by(Bill.due_day).all()
     return render_template('bills.html', bills=all_bills, accounts=accounts, cards=cards)
+
+
+@bp.route('/bills/<int:bill_id>/active', methods=['POST'])
+def set_bill_active(bill_id):
+    bill = Bill.query.get_or_404(bill_id)
+    action = request.form.get('action')
+    if action not in ('activate', 'deactivate'):
+        abort(400)
+    if action == 'activate':
+        if bill.credit_card and not bill.credit_card.is_active:
+            flash('Choose an active payment method before reactivating this bill.', 'danger')
+            return redirect(url_for('main.bills', bill_id=bill.id))
+        if not bill.is_active and bill.inactive_from:
+            bill.pauses.append(BillPause(start_date=bill.inactive_from, end_date=date.today()))
+        bill.is_active = True
+        bill.inactive_from = None
+    elif bill.is_active:
+        bill.is_active = False
+        bill.inactive_from = date.today()
+    db.session.commit()
+    flash('Bill reactivated.' if bill.is_active else 'Bill deactivated from today; earlier scheduled occurrences are preserved.', 'success')
+    return redirect(url_for('main.bills'))
 
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])
@@ -574,7 +652,7 @@ def incomes(income_id):
         existing = Income.query.get(income_id) if income_id else None
         inc = build_income(request.form, existing)
         if not inc:
-            # if build_income returned None, date parse failed
+            # Invalid income inputs leave the previously saved entry unchanged.
             route = ('main.incomes' if not income_id
                      else 'main.incomes')  # or 'main.edit_income'
             return redirect(url_for(route))
@@ -685,6 +763,7 @@ def report():
     # 6. Build report_data per account. Cash Flow uses planned card payments,
     # not completed payment history. Card-funded bills are not bank outflows.
     cards = CreditCard.query.all()
+    report_bills = Bill.query.all()
     report_data = []
     for acct in accounts:
         sb = starting_balances[acct.id]
@@ -704,7 +783,14 @@ def report():
         bill_map = {}
         bill_details = {}
         card_charge_map = {}
-        for b in acct.bills:
+        # Resolve future card purchases through the card's current payment account.
+        # The stored bill account may predate a card payment-account change.
+        for b in report_bills:
+            target_account = b.credit_card.payment_account_id if b.credit_card_id else b.account_id
+            if target_account != acct.id:
+                continue
+            if b.credit_card_id and not b.credit_card.is_active:
+                flash(f"Bill '{b.name}' references inactive card '{b.credit_card.name}'; move it to an active payment method. Card payments are not projected.", 'warning')
             for due in bill_dates(b, start_date, last_day):
                 if b.credit_card_id is not None:
                     # Display the charge, but do not subtract it from checking.
