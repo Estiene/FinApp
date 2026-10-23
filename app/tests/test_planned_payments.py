@@ -186,6 +186,14 @@ class PlannedPaymentTests(unittest.TestCase):
         item = card(bills=[bill("0", 2)], minimum="0", extra="0")
         self.assertEqual(self.events(item), [])
 
+    def test_missing_account_id_never_collects_unlinked_card_payments(self):
+        unlinked = card(account=None, minimum="25", extra="0")
+        self.assertEqual(
+            planned_payments_for_account(
+                [unlinked], None, self.START, self.END),
+            {},
+        )
+
     def test_account_filter_and_multiple_cards(self):
         first = card(minimum="25", extra="0", account=1, card_id=1)
         second = card(minimum="30", extra="0", account=1, card_id=2)
