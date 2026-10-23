@@ -45,14 +45,24 @@ def statement_reminder(card, today=None, stale_after_days=45, upcoming_days=7):
             "message": f"Statement payment is {days_overdue} days past due.",
         }
 
+    # A newer statement can also have a later due date than an older
+    # unpaid one. Surface the nearest upcoming obligation across all cycles.
+    upcoming = [
+        statement for statement in statements
+        if today <= statement.payment_due_date
+        and (statement.payment_due_date - today).days <= upcoming_days
+        and (unpaid_balance(statement) or 0) > 0
+    ]
+    if upcoming:
+        nearest = min(upcoming, key=lambda s: s.payment_due_date)
+        days_until_due = (nearest.payment_due_date - today).days
+        return {
+            "status": "upcoming",
+            "message": f"Statement payment due in {days_until_due} days.",
+        }
+
     latest = max(statements, key=lambda statement: statement.statement_close_date)
     days_old = (today - latest.statement_close_date).days
-    due = latest.payment_due_date
-    remaining = unpaid_balance(latest)
-    if remaining is not None and remaining > 0:
-        days_until_due = (due - today).days
-        if days_until_due <= upcoming_days:
-            return {"status": "upcoming", "message": f"Statement payment due in {days_until_due} days."}
 
     if days_old > stale_after_days:
         return {
