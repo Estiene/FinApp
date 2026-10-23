@@ -64,7 +64,8 @@
       <div class="form-text">The schedule repeats from this date.</div>
     </div>
     <div class="col-12">
-      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <button type="submit" name="save_action" value="stay" class="btn btn-primary">Save</button>
+      <button type="submit" name="save_action" value="exit" class="btn btn-outline-primary">Save &amp; Exit</button>
       <a href="{{ url_for('main.bills') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
     </div>
   </form>

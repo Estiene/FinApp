@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
-from .models import db, Account, Bill, Income, CreditCard, CreditCardStatement, CreditCardPayment
+from .models import db, Account, Bill, BillPause, Income, CreditCard, CreditCardStatement, CreditCardPayment
 from .utils.dashboard import build_dashboard_data, bill_dates
 from .utils.credit_cards import projected_card_balance
 from .utils.planned_payments import planned_card_payments
@@ -351,6 +351,8 @@ def edit_credit_card(card_id):
                 setattr(card, field, value)
             db.session.commit()
             flash("Credit card updated successfully.", "success")
+            if request.form.get('save_action') == 'stay':
+                return redirect(url_for('main.edit_credit_card', card_id=card.id))
             return redirect(url_for('main.credit_cards'))
         except (ValueError, InvalidOperation) as error:
             db.session.rollback()
@@ -601,6 +603,8 @@ def bills(bill_id):
         db.session.commit()
         action = 'Updated' if bill_id else 'Added'
         flash(f"{action} bill '{b.name}'.", 'success')
+        if bill_id and request.form.get('save_action') == 'stay':
+            return redirect(url_for('main.bills', bill_id=bill_id))
         return redirect(url_for('main.bills'))
 
     if bill_id:
@@ -609,6 +613,28 @@ def bills(bill_id):
 
     all_bills = Bill.query.order_by(Bill.due_day).all()
     return render_template('bills.html', bills=all_bills, accounts=accounts, cards=cards)
+
+
+@bp.route('/bills/<int:bill_id>/active', methods=['POST'])
+def set_bill_active(bill_id):
+    bill = Bill.query.get_or_404(bill_id)
+    action = request.form.get('action')
+    if action not in ('activate', 'deactivate'):
+        abort(400)
+    if action == 'activate':
+        if bill.credit_card and not bill.credit_card.is_active:
+            flash('Choose an active payment method before reactivating this bill.', 'danger')
+            return redirect(url_for('main.bills', bill_id=bill.id))
+        if not bill.is_active and bill.inactive_from:
+            bill.pauses.append(BillPause(start_date=bill.inactive_from, end_date=date.today()))
+        bill.is_active = True
+        bill.inactive_from = None
+    elif bill.is_active:
+        bill.is_active = False
+        bill.inactive_from = date.today()
+    db.session.commit()
+    flash('Bill reactivated.' if bill.is_active else 'Bill deactivated from today; earlier scheduled occurrences are preserved.', 'success')
+    return redirect(url_for('main.bills'))
 
 
 @bp.route('/bills/<int:bill_id>/delete', methods=['POST'])

@@ -77,3 +77,32 @@ docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml down
 This retains the isolated test database for another session. To permanently delete **only** the isolated test database volume, run `docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml down -v` after verifying the project name. Never run `down -v` against the production Compose project.
 
 **Safety note:** These commands are prepared for review, not yet executed on your Windows/WSL computer. The branch is not merged or deployed.
+
+## Enhancement update: issues #15, #17, #18, #20–#23
+
+This update adds migration **d7e8f901ab23**, following **c5d5a9b2e781**.
+Existing bills default to Active. Deactivation stops scheduled occurrences from
+that day onward; reactivation resumes the original schedule without backfilling
+paused dates. Prior scheduled occurrences and recorded card statements/payments
+are retained. Migration downgrade removes bill status and pause history.
+
+For the existing evaluation checkout (including a local port 5002 override),
+pull the branch, rebuild only the isolated web service, inspect `flask db current`
+and `flask db heads`, then upgrade the isolated database as in section 4.
+Back up the current evaluation database before upgrading; do not restore an old
+production dump over the evaluation database. Example backup:
+
+```bash
+docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec -T db pg_dump -U finapp -d finapp -Fc > ~/finapp-stage5-before-enhancements.dump
+```
+
+Retest the Dashboard selector, saved credit limits and inactive status; Save vs
+Save & Exit and Cancel; Cash Flow bill-name/amount search and clear; simulation
+balance retention and reset; and recurring bill deactivation/reactivation.
+Simulation balances and the selected Dashboard view are stored per browser tab
+using session storage. Explicit URL balances take priority. Refresh and month
+navigation retain balances; a separate new tab has its own session (duplicated
+tabs may initially copy storage). Dates are not retained. Browsers may restore
+session storage when restoring tabs. Reset clears simulation balances without
+changing actual balances. If session storage is unavailable, report controls
+remain usable without persistence.

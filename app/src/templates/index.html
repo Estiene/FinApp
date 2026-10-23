@@ -28,6 +28,11 @@
     </div>
   </div>
 
+  <div class="btn-group mb-3" role="group" aria-label="Dashboard account type">
+    <button class="btn btn-outline-primary" type="button" data-dashboard-view="bank">Bank Accounts</button>
+    <button class="btn btn-outline-primary" type="button" data-dashboard-view="card">Credit Cards</button>
+  </div>
+  <section id="dashboard-bank">
   <div class="d-flex flex-wrap justify-content-between align-items-end mb-3 gap-2">
     <div>
       <h2 class="h4 mb-1">Projected Balance Today</h2>
@@ -133,6 +138,8 @@
       <a href="{{ url_for('main.accounts') }}" class="btn btn-primary">Create an account</a>
     </div>
   {% endif %}
+  </section>
+  <section id="dashboard-card">
   <div class="d-flex justify-content-between align-items-center mt-5 mb-3">
     <div>
       <h2 class="h4 mb-1">Credit Cards</h2>
@@ -148,7 +155,9 @@
         <div class="col-xl-6">
           <div class="card h-100 shadow-sm">
             <div class="card-body">
-              <h3 class="h5 mb-3">{{ summary.card.name }}</h3>
+              <h3 class="h5 mb-3">{{ summary.card.name }} {% if not summary.card.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}</h3>
+              <p class="small text-body-secondary">Credit limit: {% if summary.card.credit_limit is not none %}${{ '{:,.2f}'.format(summary.card.credit_limit) }}{% else %}Not set{% endif %}</p>
+              {% if not summary.card.is_active %}<p class="small text-body-secondary">Inactive card; future payments are not projected. Utilization below describes this card only.</p>{% endif %}
 
               {% if summary.statement_reminder.status in ('missing', 'stale', 'overdue', 'upcoming') %}
                 <div class="alert {% if summary.statement_reminder.status == 'overdue' %}alert-danger{% else %}alert-warning{% endif %} py-2" role="status">
@@ -260,4 +269,19 @@
       No credit cards have been added yet.
     </p>
   {% endif %}
+  </section>
+  <script>
+  (() => {
+    const buttons = document.querySelectorAll('[data-dashboard-view]');
+    function select(view) {
+      if (!['bank', 'card'].includes(view)) view = 'bank';
+      ['bank', 'card'].forEach(kind => { document.getElementById('dashboard-' + kind).hidden = kind !== view; });
+      buttons.forEach(button => { const active = button.dataset.dashboardView === view; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+      try { sessionStorage.setItem('finapp.dashboard.view', view); } catch (_) {}
+    }
+    buttons.forEach(button => button.addEventListener('click', () => select(button.dataset.dashboardView)));
+    let view = 'bank'; try { view = sessionStorage.getItem('finapp.dashboard.view') || view; } catch (_) {}
+    select(view);
+  })();
+  </script>
 {% endblock %}

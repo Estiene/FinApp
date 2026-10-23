@@ -85,7 +85,19 @@ def income_dates(income, start_date, end_date):
 
 
 def bill_dates(bill, start_date, end_date):
+    """Preserve prior pause periods when a recurring bill is reactivated."""
+    dates = _bill_dates(bill, start_date, end_date)
+    pauses = getattr(bill, 'pauses', ())
+    return [day for day in dates if not any(p.start_date <= day < p.end_date for p in pauses)]
+
+
+def _bill_dates(bill, start_date, end_date):
     """Inclusive occurrences for monthly or anchored interval-based bills."""
+    if not getattr(bill, "is_active", True):
+        cutoff = getattr(bill, "inactive_from", None)
+        if cutoff is None:
+            return []
+        end_date = min(end_date, cutoff - timedelta(days=1))
     if start_date > end_date:
         return []
     frequency = getattr(bill, "frequency", None) or "monthly"

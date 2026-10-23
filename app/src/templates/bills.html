@@ -106,7 +106,7 @@
       <tr>
         <td>{{ bill.id }}</td>
         <td>{{ bill.credit_card.name if bill.credit_card else bill.account.name }}</td>
-        <td>{{ bill.name }}</td>
+        <td>{{ bill.name }} <span class="badge bg-secondary">{{ "Active" if bill.is_active else "Inactive" }}</span></td>
         <td>{{ bill.owner }}</td>
         <td>{% if (bill.frequency or 'monthly') == 'monthly' %}Monthly, day {{ bill.due_day }}{% else %}{{ (bill.frequency or '')|replace('_', ' ')|title }} from {{ bill.next_due }}{% endif %}</td>
         <td>${{ "%.2f"|format(bill.amount) }}</td>
@@ -115,6 +115,10 @@
             href="{{ url_for('main.bills', bill_id=bill.id) }}"
             class="btn btn-sm btn-secondary me-1"
           >Edit</a>
+          <form method="post" action="{{ url_for('main.set_bill_active', bill_id=bill.id) }}" class="d-inline">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <button class="btn btn-sm btn-outline-secondary" name="action" value="{{ 'deactivate' if bill.is_active else 'activate' }}">{{ 'Deactivate' if bill.is_active else 'Reactivate' }}</button>
+          </form>
 
           <form
             action="{{ url_for('main.delete_bill', bill_id=bill.id) }}"

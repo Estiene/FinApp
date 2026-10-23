@@ -12,7 +12,7 @@ from flask_migrate import downgrade, upgrade, stamp
 from sqlalchemy import inspect, text
 
 from src.app import create_app
-from src.models import db, Account, CreditCard
+from src.models import db, Account, Bill, CreditCard
 
 
 @unittest.skipUnless(os.environ.get("FINAPP_MIGRATION_TEST") == "1",
@@ -35,11 +35,17 @@ class ForecastMigrationTests(unittest.TestCase):
                 minimum_payment=Decimal("25.00"),
                 extra_payment=Decimal("10.00"),
             )
+            bill = Bill(name="Existing bill", owner="Test", amount=Decimal("30"), due_day=20, account_id=account.id)
+            db.session.add(bill)
             db.session.add(card)
             db.session.commit()
             card_id = card.id
+            bill_id = bill.id
             db.session.remove()
             with db.engine.begin() as connection:
+                connection.execute(text("DROP TABLE bill_pauses"))
+                connection.execute(text("ALTER TABLE bills DROP COLUMN is_active"))
+                connection.execute(text("ALTER TABLE bills DROP COLUMN inactive_from"))
                 for column in (
                     "annual_percentage_rate", "credit_limit",
                     "promotional_apr", "promotional_apr_end_date", "is_active",
@@ -81,6 +87,17 @@ class ForecastMigrationTests(unittest.TestCase):
             db.session.expire_all()
             self.assertEqual(db.session.get(CreditCard, card_id).name, "Existing Visa")
             self.assertTrue(db.session.get(CreditCard, card_id).is_active)
+            db.session.remove()
+            upgrade(revision="d7e8f901ab23")
+            existing_bill = db.session.get(Bill, bill_id)
+            self.assertTrue(existing_bill.is_active)
+            self.assertEqual(existing_bill.amount, Decimal("30"))
+            self.assertIsNone(existing_bill.inactive_from)
+            db.session.remove()
+            downgrade(revision="c5d5a9b2e781")
+            self.assertNotIn("is_active", {c["name"] for c in inspect(db.engine).get_columns("bills")})
+            upgrade(revision="d7e8f901ab23")
+            self.assertTrue(db.session.get(Bill, bill_id).is_active)
 
 
 if __name__ == "__main__":
