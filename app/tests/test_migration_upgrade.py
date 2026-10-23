@@ -8,7 +8,7 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
-from flask_migrate import downgrade, upgrade
+from flask_migrate import downgrade, upgrade, stamp
 from sqlalchemy import inspect, text
 
 from src.app import create_app
@@ -22,7 +22,18 @@ class ForecastMigrationTests(unittest.TestCase):
         app = create_app()
         with app.app_context():
             # Disposable CI database only; never run against production.
-            upgrade(revision="a5c0e2d7b914")
+            # The repository's initial migration assumes legacy tables already
+            # exist. Build an equivalent pre-Stage-5D schema in disposable CI.
+            db.create_all()
+            with db.engine.begin() as connection:
+                for column in (
+                    "annual_percentage_rate", "credit_limit",
+                    "promotional_apr", "promotional_apr_end_date", "is_active",
+                ):
+                    connection.execute(text(
+                        f'ALTER TABLE credit_cards DROP COLUMN "{column}"'
+                    ))
+            stamp(revision="a5c0e2d7b914")
             account = Account(name="Migration Test Checking")
             db.session.add(account)
             db.session.flush()
