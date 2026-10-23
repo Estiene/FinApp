@@ -37,6 +37,26 @@ class StatementReminderTests(unittest.TestCase):
         s = statement(date(2026, 11, 1), date(2026, 11, 5), paid="100")
         self.assertEqual(statement_reminder(self.card([s]), self.TODAY)["status"], "current")
 
+    def test_future_itemized_payment_does_not_hide_due_reminder(self):
+        s = statement(date(2026, 11, 1), date(2026, 11, 15))
+        s.payments = [SimpleNamespace(
+            amount=Decimal("100"), payment_date=date(2026, 11, 20))]
+        self.assertEqual(
+            statement_reminder(self.card([s]), self.TODAY)["status"], "upcoming")
+
+    def test_future_legacy_payment_does_not_hide_due_reminder(self):
+        s = statement(date(2026, 11, 1), date(2026, 11, 15), paid="100")
+        s.payment_date = date(2026, 11, 20)
+        self.assertEqual(
+            statement_reminder(self.card([s]), self.TODAY)["status"], "upcoming")
+
+    def test_completed_itemized_payment_clears_due_reminder(self):
+        s = statement(date(2026, 11, 1), date(2026, 11, 15))
+        s.payments = [SimpleNamespace(
+            amount=Decimal("100"), payment_date=date(2026, 11, 9))]
+        self.assertEqual(
+            statement_reminder(self.card([s]), self.TODAY)["status"], "current")
+
     def test_inactive(self):
         self.assertEqual(statement_reminder(self.card(active=False), self.TODAY)["status"], "inactive")
 
