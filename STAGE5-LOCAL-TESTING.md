@@ -45,11 +45,12 @@ The restore target is explicitly the **finapp-stage5-test** Compose project. `--
 
 ```bash
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db current
+docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db heads
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db upgrade
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db current
 ```
 
-If the restored database is already at the current migration head, upgrade may have nothing to do. If it has an unexpected revision, **stop** and ask for help; do not stamp or reset the database.
+Before running the upgrade, compare the reported current revision and available heads. If the current revision is unknown to this branch or the migration path looks unexpected, **stop** and ask for help; do not stamp or reset the database. If the restored database is already at the current migration head, upgrade may have nothing to do.
 
 Open http://127.0.0.1:5001 and check:
 - Dashboard bank balances and the next-30-days forecast, including the first negative-balance warning.
