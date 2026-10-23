@@ -103,6 +103,19 @@ class DashboardProjectionTests(unittest.TestCase):
             Decimal("1900.00"),
         )
 
+    def test_unlinked_card_does_not_reserve_from_account_without_id(self):
+        today = date(2026, 10, 21)
+        acct = account("Checking", starting_balance="1000.00", balance_as_of=today)
+        unlinked = card_fixture(
+            balance=Decimal("500"), balance_as_of=today,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("50"),
+            payment_account_id=None, statements=[], bills=[],
+        )
+        result = build_dashboard_data([acct], today=today, credit_cards=[unlinked])
+        summary = result["account_summaries"][0]
+        self.assertEqual(summary["reserved_for_credit_cards"], Decimal("0.00"))
+        self.assertEqual(summary["spendable_balance"], Decimal("1000.00"))
+
     def test_credit_card_reservation_reduces_spendable_not_projected_balance(self):
         today = date(2026, 10, 21)
 
