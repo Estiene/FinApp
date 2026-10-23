@@ -132,6 +132,8 @@ def planned_card_payments(card, start_date, end_date):
 def planned_payments_for_account(cards, account_id, start_date, end_date):
     """Aggregate planned card outflows by day for a bank account."""
     totals = defaultdict(lambda: ZERO)
+    if account_id is None:
+        return {}
     for card in cards:
         if card.payment_account_id != account_id:
             continue
