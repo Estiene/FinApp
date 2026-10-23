@@ -115,15 +115,18 @@ def planned_card_payments(card, start_date, end_date):
             year, month = year + 1, 1
         else:
             month += 1
-    # One cycle per month. Avoid generating a duplicate extra payment
-    # if an unusual due-date override puts two cycles in one month.
-    deduped = {}
+    # Two confirmed statements may have the same overridden due date.
+    # Combine their bill-related/minimum obligations instead of silently
+    # overwriting one. Extra payments are a monthly preference, so retain
+    # only one extra event per date.
+    combined = {}
     for event in events:
         key = (event["date"], event["kind"], event["card_id"])
-        if event["kind"] == "extra" and key in deduped:
-            continue
-        deduped[key] = event
-    return sorted(deduped.values(), key=lambda x: (x["date"], x["kind"]))
+        if key not in combined:
+            combined[key] = event.copy()
+        elif event["kind"] != "extra":
+            combined[key]["amount"] += event["amount"]
+    return sorted(combined.values(), key=lambda x: (x["date"], x["kind"]))
 
 
 def planned_payments_for_account(cards, account_id, start_date, end_date):
