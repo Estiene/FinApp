@@ -59,6 +59,28 @@ class DailyAccountProjectionTests(unittest.TestCase):
         self.assertEqual(rows[0]["balance"], Decimal("75.00"))
 
 
+    def test_dashboard_does_not_replay_past_planned_card_payment(self):
+        from src.utils.dashboard import build_dashboard_data
+        card = SimpleNamespace(
+            id=3, payment_account_id=1, balance=Decimal("200"),
+            balance_as_of=date(2026, 11, 1),
+            minimum_payment=Decimal("25"), extra_payment=Decimal("0"),
+            statement_close_day=15, payment_due_day=10,
+            extra_payment_day=None, bill_payment_timing="due_date",
+            bill_payment_days_before=0, bills=[], statements=[],
+            payments=[], is_active=True, credit_limit=None,
+            annual_percentage_rate=None, promotional_apr=None,
+            promotional_apr_end_date=None,
+        )
+        acct = account()
+        acct.name = "Checking"
+        result = build_dashboard_data(
+            [acct], today=date(2026, 11, 11), credit_cards=[card])
+        summary = result["account_summaries"][0]
+        self.assertEqual(summary["projected_balance"], Decimal("100.00"))
+        self.assertEqual(summary["next_30_days"][0]["date"], date(2026, 11, 12))
+        self.assertEqual(summary["next_30_days"][0]["balance"], Decimal("100.00"))
+
     def test_dashboard_exposes_daily_forecast_and_warning(self):
         from src.utils.dashboard import build_dashboard_data
         bills = [SimpleNamespace(frequency="monthly", due_day=2,
