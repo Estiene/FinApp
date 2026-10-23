@@ -32,7 +32,29 @@ def _month_starts(start_date, end_date):
         current += relativedelta(months=1)
 
 
+def early_pay_date(nominal_date, days):
+    """Owner-defined weekday mapping, intentionally not business-day subtraction."""
+    if days not in (0, 1, 2):
+        raise ValueError('Early Pay must be Off, 1-day or 2-day.')
+    if days == 0:
+        return nominal_date
+    offsets = (3, 1, 1, 1, 1, 1, 2) if days == 1 else (3, 1, 2, 2, 2, 1, 2)
+    return nominal_date - timedelta(days=offsets[nominal_date.weekday()])
+
+
 def income_dates(income, start_date, end_date):
+    """Projected deposits; preserve distinct nominal payments sharing a deposit date."""
+    if start_date > end_date:
+        return []
+    account = getattr(income, 'account', None)
+    days = getattr(account, 'early_pay_days', 0) or 0
+    # A nominal payday up to three days into the next month/year may deposit here.
+    nominal = nominal_income_dates(income, start_date, end_date + timedelta(days=3 if days else 0))
+    return sorted(day for day in (early_pay_date(n, days) for n in nominal)
+                  if start_date <= day <= end_date)
+
+
+def nominal_income_dates(income, start_date, end_date):
     """Return scheduled pay dates within an inclusive date range."""
     if start_date > end_date:
         return []

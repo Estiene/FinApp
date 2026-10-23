@@ -28,3 +28,5 @@ jobs:
             sleep 1
           done
           NODE_PATH=/tmp/finapp-browser/node_modules node app/tests/browser_stage5.cjs
+
+          NODE_PATH=/tmp/finapp-browser/node_modules node app/tests/browser_history_early_pay.cjs

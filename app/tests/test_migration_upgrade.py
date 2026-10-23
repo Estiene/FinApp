@@ -12,7 +12,7 @@ from flask_migrate import downgrade, upgrade, stamp
 from sqlalchemy import inspect, text
 
 from src.app import create_app
-from src.models import db, Account, Bill, CreditCard
+from src.models import db, Account, Bill, CreditCard, AccountBalanceObservation, AccountForecastSnapshot
 
 
 @unittest.skipUnless(os.environ.get("FINAPP_MIGRATION_TEST") == "1",
@@ -39,10 +39,15 @@ class ForecastMigrationTests(unittest.TestCase):
             db.session.add(bill)
             db.session.add(card)
             db.session.commit()
+            account_id = account.id
             card_id = card.id
             bill_id = bill.id
             db.session.remove()
             with db.engine.begin() as connection:
+                for table in ("account_forecast_points", "account_forecast_snapshots", "account_balance_observations"):
+                    connection.execute(text("DROP TABLE " + table))
+                connection.execute(text("ALTER TABLE accounts DROP CONSTRAINT ck_account_early_pay_days"))
+                connection.execute(text("ALTER TABLE accounts DROP COLUMN early_pay_days"))
                 connection.execute(text("DROP TABLE bill_pauses"))
                 connection.execute(text("ALTER TABLE bills DROP COLUMN is_active"))
                 connection.execute(text("ALTER TABLE bills DROP COLUMN inactive_from"))
@@ -98,6 +103,21 @@ class ForecastMigrationTests(unittest.TestCase):
             self.assertNotIn("is_active", {c["name"] for c in inspect(db.engine).get_columns("bills")})
             upgrade(revision="d7e8f901ab23")
             self.assertTrue(db.session.get(Bill, bill_id).is_active)
+            db.session.remove()
+            upgrade(revision="e8f901ab24cd")
+            migrated_account = db.session.get(Account, account_id)
+            self.assertEqual(migrated_account.early_pay_days, 0)
+            observation = AccountBalanceObservation.query.filter_by(account_id=account_id).one()
+            self.assertEqual(observation.balance, migrated_account.starting_balance)
+            self.assertEqual(observation.balance_date, migrated_account.balance_as_of)
+            self.assertIsNone(observation.recorded_at)
+            self.assertEqual(observation.source, "imported")
+            self.assertEqual(AccountForecastSnapshot.query.count(), 0)
+            db.session.remove()
+            downgrade(revision="d7e8f901ab23")
+            self.assertNotIn("early_pay_days", {c["name"] for c in inspect(db.engine).get_columns("accounts")})
+            upgrade(revision="e8f901ab24cd")
+            self.assertEqual(AccountBalanceObservation.query.count(), 1)
 
 
 if __name__ == "__main__":

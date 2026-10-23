@@ -43,6 +43,7 @@
             <a class="nav-link{% if request.endpoint == 'main.report' %} active{% endif %}"
                href="{{ url_for('main.report') }}">Cash Flow</a>
           </li>
+          <li class="nav-item"><a class="nav-link{% if request.endpoint == 'main.balance_history' %} active{% endif %}" href="{{ url_for('main.balance_history') }}">Balance History</a></li>
           <li class="nav-item">
             <a class="nav-link{% if request.endpoint in ('main.accounts', 'main.update_account_balance') %} active{% endif %}"
                href="{{ url_for('main.accounts') }}">Accounts</a>
