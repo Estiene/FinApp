@@ -46,6 +46,13 @@ The restore target is explicitly the **finapp-stage5-test** Compose project. `--
 ```bash
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db current
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db heads
+```
+
+Review the output **before proceeding**. The database's current revision must be known to this branch. For a production copy taken before Stage 5A deployment, the expected migration path includes Stage 5A (`a5c0e2d7b914`) and Stage 5D (`c5d5a9b2e781`). If the revision is unknown or the path looks unexpected, stop and ask for help.
+
+Only after confirming the revision and path, run:
+
+```bash
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db upgrade
 docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec web flask db current
 ```
