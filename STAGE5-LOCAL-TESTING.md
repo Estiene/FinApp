@@ -36,10 +36,10 @@ This command only reads the production database. It writes the dump to a WSL fil
 Restore the copy into the isolated test database:
 
 ```bash
-docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec -T db pg_restore -U finapp -d finapp --no-owner --no-privileges < ~/finapp-stage5-copy.dump
+docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec -T db pg_restore -U finapp -d finapp --no-owner --no-privileges --exit-on-error --single-transaction < ~/finapp-stage5-copy.dump
 ```
 
-The restore target is explicitly the **finapp-stage5-test** Compose project. If the restore reports errors, stop and review them rather than proceeding with migrations.
+The restore target is explicitly the **finapp-stage5-test** Compose project. `--exit-on-error` stops at the first restore failure, and `--single-transaction` avoids leaving a partially restored database. If the restore reports errors, stop and review them rather than proceeding with migrations. If the test database already contains tables from a previous run, **do not restore over it**; use a fresh isolated test volume or ask for help.
 
 ## 4. Upgrade the COPY and inspect the app
 
