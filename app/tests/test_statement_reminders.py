@@ -46,6 +46,21 @@ class StatementReminderTests(unittest.TestCase):
             "upcoming",
         )
 
+    def test_older_upcoming_statement_is_not_hidden_by_newer_statement(self):
+        older = statement(date(2026, 10, 15), date(2026, 11, 12))
+        newer = statement(date(2026, 11, 5), date(2026, 12, 5))
+        reminder = statement_reminder(self.card([older, newer]), self.TODAY)
+        self.assertEqual(reminder["status"], "upcoming")
+        self.assertIn("2 days", reminder["message"])
+
+    def test_older_paid_statement_does_not_trigger_upcoming(self):
+        older = statement(date(2026, 10, 15), date(2026, 11, 12), paid="100")
+        newer = statement(date(2026, 11, 5), date(2026, 12, 5))
+        self.assertEqual(
+            statement_reminder(self.card([older, newer]), self.TODAY)["status"],
+            "current",
+        )
+
     def test_upcoming(self):
         s = statement(date(2026, 11, 1), date(2026, 11, 15))
         self.assertEqual(statement_reminder(self.card([s]), self.TODAY)["status"], "upcoming")
