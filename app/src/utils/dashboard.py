@@ -202,7 +202,7 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
         # not be replayed from the older account snapshot.
         account = summary["account"]
         forecast_account = SimpleNamespace(
-            id=account.id,
+            id=getattr(account, "id", None),
             starting_balance=summary["projected_balance"],
             balance_as_of=today,
             incomes=account.incomes,
