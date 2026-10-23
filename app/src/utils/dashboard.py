@@ -3,6 +3,7 @@
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from dateutil.relativedelta import relativedelta
 from .credit_cards import (
     recorded_payments_for_account,
@@ -196,8 +197,19 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
 
     from .cash_flow_projection import daily_account_projection
     for summary in account_summaries:
+        # Anchor the forward-looking forecast to today's displayed balance.
+        # Past planned card payments are not actual bank transactions and must
+        # not be replayed from the older account snapshot.
+        account = summary["account"]
+        forecast_account = SimpleNamespace(
+            id=account.id,
+            starting_balance=summary["projected_balance"],
+            balance_as_of=today,
+            incomes=account.incomes,
+            bills=account.bills,
+        )
         future = daily_account_projection(
-            summary["account"], today, today + timedelta(days=30), credit_cards
+            forecast_account, today, today + timedelta(days=30), credit_cards
         )
         negative = [row for row in future if row["negative"]]
         summary["next_30_days_low"] = min(
