@@ -42,8 +42,10 @@ def daily_account_projection(account, start_date, end_date, credit_cards=()):
             continue
         for day in bill_dates(bill, snapshot + timedelta(days=1), end_date):
             changes[day] -= Decimal(str(bill.amount))
+    account_id = getattr(account, "id", None)
     for card in credit_cards:
-        if getattr(card, "payment_account_id", None) != getattr(account, "id", None):
+        # Missing IDs must never match each other and invent bank outflows.
+        if account_id is None or getattr(card, "payment_account_id", None) != account_id:
             continue
         for payment in planned_card_payments(card, snapshot + timedelta(days=1), end_date):
             changes[payment["date"]] -= payment["amount"]
