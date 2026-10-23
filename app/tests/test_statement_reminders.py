@@ -30,6 +30,22 @@ class StatementReminderTests(unittest.TestCase):
         self.assertEqual(
             statement_reminder(self.card([s]), self.TODAY)["status"], "overdue")
 
+    def test_newer_statement_does_not_hide_older_overdue_balance(self):
+        old = statement(date(2026, 9, 15), date(2026, 10, 10))
+        recent = statement(date(2026, 11, 1), date(2026, 11, 20))
+        self.assertEqual(
+            statement_reminder(self.card([old, recent]), self.TODAY)["status"],
+            "overdue",
+        )
+
+    def test_paid_older_statement_does_not_hide_new_upcoming_payment(self):
+        old = statement(date(2026, 9, 15), date(2026, 10, 10), paid="100")
+        recent = statement(date(2026, 11, 1), date(2026, 11, 15))
+        self.assertEqual(
+            statement_reminder(self.card([old, recent]), self.TODAY)["status"],
+            "upcoming",
+        )
+
     def test_upcoming(self):
         s = statement(date(2026, 11, 1), date(2026, 11, 15))
         self.assertEqual(statement_reminder(self.card([s]), self.TODAY)["status"], "upcoming")
