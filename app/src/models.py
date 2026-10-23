@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from flask_sqlalchemy import SQLAlchemy
@@ -17,6 +17,11 @@ class Account(db.Model):
     # Snapshot balance at the end of this date; later scheduled events are projected.
     balance_as_of = db.Column(db.Date, nullable=False, default=date.today)
 
+    early_pay_days = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    __table_args__ = (db.CheckConstraint('early_pay_days IN (0, 1, 2)', name='ck_account_early_pay_days'),)
+    observations = db.relationship('AccountBalanceObservation', cascade='all, delete-orphan')
+    forecasts = db.relationship('AccountForecastSnapshot', cascade='all, delete-orphan')
+
     # relationships
     bills = db.relationship(
         'Bill', back_populates='account', cascade='all, delete-orphan'
@@ -24,6 +29,40 @@ class Account(db.Model):
     incomes = db.relationship(
         'Income', back_populates='account', cascade='all, delete-orphan'
     )
+
+
+class AccountBalanceObservation(db.Model):
+    __tablename__ = 'account_balance_observations'
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False, index=True)
+    balance_date = db.Column(db.Date, nullable=False)
+    balance = db.Column(db.Numeric(12, 2), nullable=False)
+    # NULL denotes an existing dated balance imported by the migration.
+    recorded_at = db.Column(db.DateTime(timezone=True), nullable=True,
+                            default=lambda: datetime.now(timezone.utc))
+    source = db.Column(db.String(20), nullable=False, default='manual')
+
+
+class AccountForecastSnapshot(db.Model):
+    __tablename__ = 'account_forecast_snapshots'
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False, index=True)
+    generated_at = db.Column(db.DateTime(timezone=True), nullable=False,
+                             default=lambda: datetime.now(timezone.utc))
+    base_date = db.Column(db.Date, nullable=False)
+    base_balance = db.Column(db.Numeric(12, 2), nullable=False)
+    horizon_days = db.Column(db.Integer, nullable=False)
+    early_pay_days = db.Column(db.Integer, nullable=False)
+    points = db.relationship('AccountForecastPoint', cascade='all, delete-orphan', order_by='AccountForecastPoint.balance_date')
+
+
+class AccountForecastPoint(db.Model):
+    __tablename__ = 'account_forecast_points'
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('account_forecast_snapshots.id'), nullable=False)
+    balance_date = db.Column(db.Date, nullable=False)
+    balance = db.Column(db.Numeric(12, 2), nullable=False)
+    __table_args__ = (db.UniqueConstraint('snapshot_id', 'balance_date', name='uq_forecast_point_date'),)
 
 
 class Bill(db.Model):

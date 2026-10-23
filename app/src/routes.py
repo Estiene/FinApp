@@ -8,7 +8,7 @@ from dateutil import parser
 from dateutil.relativedelta import relativedelta
 
 from .models import db, Account, Bill, BillPause, Income, CreditCard, CreditCardStatement, CreditCardPayment
-from .utils.dashboard import build_dashboard_data, bill_dates
+from .utils.dashboard import build_dashboard_data, bill_dates, income_dates
 from .utils.credit_cards import projected_card_balance
 from .utils.planned_payments import planned_card_payments
 from calendar import monthrange
@@ -153,45 +153,6 @@ def build_income(form, existing=None):
         inc.day_of_month_2 = None
 
     return inc
-
-
-def income_dates_for_month(inc, first_day, last_day):
-    """
-    Given one Income and a date range, return the list of pay-dates
-    that fall within that month.
-    """
-    dates = []
-    freq = inc.frequency
-
-    if freq in ('weekly', 'biweekly'):
-        weeks = 1 if freq == 'weekly' else 2
-        delta = relativedelta(weeks=weeks)
-        seed  = inc.next_pay
-
-        while seed < first_day:
-            seed += delta
-        while seed <= last_day:
-            dates.append(seed)
-            seed += delta
-
-    elif freq == 'monthly':
-        try:
-            pay = date(first_day.year, first_day.month, inc.next_pay.day)
-        except ValueError:
-            return []
-        if first_day <= pay <= last_day:
-            dates.append(pay)
-
-    else:  # twice_monthly
-        for d in (inc.day_of_month_1, inc.day_of_month_2):
-            try:
-                pay = date(first_day.year, first_day.month, d)
-            except ValueError:
-                continue
-            if first_day <= pay <= last_day:
-                dates.append(pay)
-
-    return dates
 
 
 #
@@ -575,11 +536,29 @@ def update_account_balance(account_id):
         flash("The balance date cannot be in the future.", 'danger')
         return redirect(url_for('main.index'))
 
+    from .models import AccountBalanceObservation
+    db.session.add(AccountBalanceObservation(account_id=account.id, balance_date=balance_date, balance=balance))
     account.starting_balance = balance
     account.balance_as_of = balance_date
     db.session.commit()
     flash(f"Saved starting balance for '{account.name}'.", 'success')
     return redirect(url_for('main.index'))
+
+@bp.route('/accounts/<int:account_id>/early-pay', methods=['POST'])
+def update_early_pay(account_id):
+    account = Account.query.get_or_404(account_id)
+    try:
+        days = int(request.form.get('early_pay_days', ''))
+        if days not in (0, 1, 2):
+            raise ValueError
+    except ValueError:
+        flash('Choose Off, 1-day early or 2-day early.', 'danger')
+        return redirect(url_for('main.accounts'))
+    account.early_pay_days = days
+    db.session.commit()
+    flash('Early Pay saved. Weekday mapping only; bank holidays are not adjusted. Income schedules are unchanged.', 'success')
+    return redirect(url_for('main.accounts'))
+
 
 @bp.route('/accounts/<int:account_id>/delete', methods=['POST'])
 def delete_account(account_id):
@@ -731,35 +710,6 @@ def report():
     if start_date < first_of_month or start_date > last_day:
         start_date = first_of_month
 
-    # 5. Helper: all pay-dates of one Income within [start_date, last_day]
-    def income_dates_for_month(inc):
-        dates, freq = [], inc.frequency
-        if freq in ('weekly', 'biweekly'):
-            step = relativedelta(weeks=(1 if freq=='weekly' else 2))
-            seed = inc.next_pay
-            while seed < start_date:
-                seed += step
-            while seed <= last_day:
-                dates.append(seed)
-                seed += step
-
-        elif freq == 'monthly':
-            try:
-                pay = date(year, month, inc.next_pay.day)
-            except ValueError:
-                return []
-            if start_date <= pay <= last_day:
-                dates.append(pay)
-
-        else:  # twice_monthly
-            for d in (inc.day_of_month_1, inc.day_of_month_2):
-                dom = min(d, last_dom)  # also cap here if you like
-                pay = date(year, month, dom)
-                if start_date <= pay <= last_day:
-                    dates.append(pay)
-
-        return dates
-
     # 6. Build report_data per account. Cash Flow uses planned card payments,
     # not completed payment history. Card-funded bills are not bank outflows.
     cards = CreditCard.query.all()
@@ -772,7 +722,7 @@ def report():
         income_map = {}
         income_details = {}
         for inc in acct.incomes:
-            for dt in income_dates_for_month(inc):
+            for dt in income_dates(inc, start_date, last_day):
                 amount = float(inc.amount)
                 income_map[dt] = income_map.get(dt, 0.0) + amount
                 income_details.setdefault(dt, []).append({
@@ -886,3 +836,59 @@ def report():
 @bp.route('/manage')
 def manage():
     return render_template('manage.html')
+
+
+@bp.route('/balance-history', methods=['GET'])
+def balance_history():
+    from datetime import timedelta
+    from .models import AccountBalanceObservation, AccountForecastSnapshot
+    from .utils.balance_history import chart_geometry
+    accounts = Account.query.order_by(Account.name).all()
+    if not accounts:
+        return render_template('balance_history.html', accounts=[], account=None)
+    account_id = request.args.get('account_id', type=int)
+    account = Account.query.get_or_404(account_id) if account_id else accounts[0]
+    today = date.today()
+    try:
+        start = date.fromisoformat(request.args.get('from', (today-timedelta(days=90)).isoformat()))
+        end = date.fromisoformat(request.args.get('to', (today+timedelta(days=90)).isoformat()))
+        if start > end or (end-start).days > 730:
+            raise ValueError
+    except ValueError:
+        flash('Choose an ordered date range of at most 730 days.', 'danger')
+        start, end = today-timedelta(days=90), today+timedelta(days=90)
+    records = AccountBalanceObservation.query.filter_by(account_id=account.id).filter(
+        AccountBalanceObservation.balance_date.between(start, end)).order_by(AccountBalanceObservation.id).all()
+    # Corrections of a given date keep their audit records; the chart uses the latest save.
+    latest = {record.balance_date: record for record in records}
+    observations = [latest[key] for key in sorted(latest)]
+    available = AccountForecastSnapshot.query.filter_by(account_id=account.id).filter(
+        AccountForecastSnapshot.base_date.between(start-timedelta(days=min(180, (start-date.min).days)), end)
+    ).order_by(AccountForecastSnapshot.id.desc()).limit(100).all()
+    requested = request.args.getlist('forecast_id', type=int)
+    if 'selection' in request.args:
+        selected = [snapshot for snapshot in available if snapshot.id in requested][:3]
+        if len(requested) > 3:
+            flash('Up to three forecasts can be compared at once.', 'warning')
+    else:
+        selected = available[:3]
+    chart = chart_geometry(observations, selected, start, end)
+    return render_template('balance_history.html', accounts=accounts, account=account,
+        start=start, end=end, observations=observations, available=available,
+        selected_ids=[s.id for s in selected], chart=chart)
+
+
+@bp.route('/accounts/<int:account_id>/forecasts', methods=['POST'])
+def save_account_forecast(account_id):
+    from .utils.balance_history import capture_forecast
+    account = Account.query.get_or_404(account_id)
+    try:
+        horizon = int(request.form.get('horizon', '90'))
+        forecast = capture_forecast(account, CreditCard.query.all(), date.today(), horizon)
+    except ValueError as error:
+        flash(str(error), 'danger')
+        return redirect(url_for('main.balance_history', account_id=account.id))
+    db.session.add(forecast)
+    db.session.commit()
+    flash('Forecast saved. Later schedule edits will not rewrite this snapshot.', 'success')
+    return redirect(url_for('main.balance_history', account_id=account.id))

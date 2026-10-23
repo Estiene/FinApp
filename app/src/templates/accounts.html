@@ -34,6 +34,7 @@
       <tr>
         <th>ID</th>
         <th>Name</th>
+        <th>Early Pay</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -42,6 +43,18 @@
       <tr>
         <td>{{ acct.id }}</td>
         <td>{{ acct.name }}</td>
+        <td>
+          <form method="post" action="{{ url_for('main.update_early_pay', account_id=acct.id) }}" class="d-flex flex-wrap gap-2">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <select name="early_pay_days" class="form-select w-auto" aria-label="Early Pay for {{ acct.name }}">
+              {% for value, label in [(0, 'Off'), (1, '1-day early'), (2, '2-day early')] %}
+              <option value="{{ value }}" {% if acct.early_pay_days == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-outline-primary">Save</button>
+          </form>
+          <div class="form-text">Weekday mapping only; no bank-holiday adjustment.</div>
+        </td>
         <td>
           <form method="POST"
                 action="{{ url_for('main.delete_account', account_id=acct.id) }}"
