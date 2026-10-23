@@ -17,13 +17,6 @@ def statement_reminder(card, today=None, stale_after_days=45, upcoming_days=7):
 
     latest = max(statements, key=lambda statement: statement.statement_close_date)
     days_old = (today - latest.statement_close_date).days
-    if days_old > stale_after_days:
-        return {
-            "status": "stale",
-            "message": f"Latest statement is {days_old} days old.",
-            "statement_date": latest.statement_close_date,
-        }
-
     due = latest.payment_due_date
     remaining = latest.statement_balance
     if remaining is not None:
@@ -43,5 +36,12 @@ def statement_reminder(card, today=None, stale_after_days=45, upcoming_days=7):
             return {"status": "overdue", "message": f"Statement payment is {abs(days_until_due)} days past due."}
         if days_until_due <= upcoming_days:
             return {"status": "upcoming", "message": f"Statement payment due in {days_until_due} days."}
+
+    if days_old > stale_after_days:
+        return {
+            "status": "stale",
+            "message": f"Latest statement is {days_old} days old.",
+            "statement_date": latest.statement_close_date,
+        }
 
     return {"status": "current", "message": "Statement information is current."}
