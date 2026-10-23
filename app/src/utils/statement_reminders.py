@@ -29,9 +29,12 @@ def statement_reminder(card, today=None, stale_after_days=45, upcoming_days=7):
     if remaining is not None:
         from decimal import Decimal
         remaining = max(Decimal("0"), Decimal(str(remaining)))
-        remaining -= max(Decimal("0"), Decimal(str(getattr(latest, "actual_payment", None) or 0)))
+        legacy_payment_date = getattr(latest, "payment_date", None)
+        if legacy_payment_date is None or legacy_payment_date <= today:
+            remaining -= max(Decimal("0"), Decimal(str(getattr(latest, "actual_payment", None) or 0)))
         for payment in getattr(latest, "payments", ()):
-            remaining -= max(Decimal("0"), Decimal(str(payment.amount)))
+            if payment.payment_date <= today:
+                remaining -= max(Decimal("0"), Decimal(str(payment.amount)))
         remaining = max(Decimal("0"), remaining)
 
     if remaining is not None and remaining > 0:
