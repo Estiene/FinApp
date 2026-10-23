@@ -49,6 +49,18 @@ class DailyAccountProjectionTests(unittest.TestCase):
         self.assertEqual(daily_account_projection(
             account(), date(2026, 10, 1), date(2026, 10, 31)), [])
 
+    def test_missing_account_id_does_not_match_unlinked_card(self):
+        card = SimpleNamespace(
+            id=3, payment_account_id=None,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("0"),
+            statement_close_day=15, payment_due_day=10,
+            bills=[], statements=[])
+        acct = account()
+        del acct.id
+        rows = daily_account_projection(
+            acct, date(2026, 11, 10), date(2026, 11, 10), [card])
+        self.assertEqual(rows[0]["balance"], Decimal("100.00"))
+
     def test_planned_card_payments_reduce_linked_account_only(self):
         card = SimpleNamespace(id=3, payment_account_id=1, minimum_payment=Decimal("25"),
                                extra_payment=Decimal("0"), statement_close_day=15,
