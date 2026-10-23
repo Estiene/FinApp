@@ -168,7 +168,7 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
             if credit_cards:
                 projected_balance -= recorded_payments_for_account(
                     credit_cards=credit_cards,
-                    account_id=account.id,
+                    account_id=getattr(account, "id", None),
                     start_date=projection_start,
                     end_date=today,
                 )
