@@ -43,6 +43,29 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Validate isolated Docker Compose configuration
         run: docker compose -p finapp-stage5-test -f ../docker-compose.stage5-test.yml config -q
+      - name: Verify isolated Compose cannot expose production ports or volumes
+        working-directory: .
+        run: |
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml config --format json > /tmp/finapp-stage5-compose.json
+          python - <<'PY'
+          import json
+          with open("/tmp/finapp-stage5-compose.json", encoding="utf-8") as source:
+              config = json.load(source)
+          assert config["name"] == "finapp-stage5-test"
+          services = config["services"]
+          assert set(services) == {"db", "web"}
+          assert not services["db"].get("ports"), "Database must not publish a host port"
+          ports = services["web"].get("ports", [])
+          assert len(ports) == 1
+          assert ports[0]["host_ip"] == "127.0.0.1"
+          assert int(ports[0]["published"]) == 5001
+          assert int(ports[0]["target"]) == 5000
+          mounts = services["db"].get("volumes", [])
+          assert len(mounts) == 1
+          assert mounts[0]["type"] == "volume"
+          assert mounts[0]["source"].endswith("stage5-test-db")
+          assert mounts[0]["target"] == "/var/lib/postgresql/data"
+          PY
       - name: Run unit and route tests
         run: python -m unittest discover -s tests -v
       - name: Verify migration upgrade and downgrade on PostgreSQL
