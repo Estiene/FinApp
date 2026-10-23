@@ -103,6 +103,31 @@ class DashboardProjectionTests(unittest.TestCase):
             Decimal("1900.00"),
         )
 
+    def test_unlinked_recorded_card_payment_does_not_reduce_unknown_account(self):
+        today = date(2026, 10, 21)
+        acct = account(
+            "Checking", starting_balance="1000.00",
+            balance_as_of=date(2026, 10, 1),
+        )
+        statement = SimpleNamespace(
+            statement_close_date=date(2026, 9, 15),
+            payment_due_date=date(2026, 10, 10),
+            statement_balance=Decimal("200"),
+            actual_payment=Decimal("100"),
+            payment_date=date(2026, 10, 10),
+            planned_payment=None, payments=[],
+        )
+        unlinked = card_fixture(
+            balance=Decimal("500"), balance_as_of=today,
+            minimum_payment=Decimal("25"), extra_payment=Decimal("0"),
+            payment_account_id=None, statements=[statement], bills=[],
+        )
+        result = build_dashboard_data([acct], today=today, credit_cards=[unlinked])
+        self.assertEqual(
+            result["account_summaries"][0]["projected_balance"],
+            Decimal("1000.00"),
+        )
+
     def test_unlinked_card_does_not_reserve_from_account_without_id(self):
         today = date(2026, 10, 21)
         acct = account("Checking", starting_balance="1000.00", balance_as_of=today)
