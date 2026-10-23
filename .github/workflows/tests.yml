@@ -66,6 +66,15 @@ jobs:
           assert mounts[0]["source"].endswith("stage5-test-db")
           assert mounts[0]["target"] == "/var/lib/postgresql/data"
           PY
+      - name: Smoke-test isolated PostgreSQL container
+        working-directory: .
+        run: |
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml up -d --wait db
+          docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml exec -T db pg_isready -U finapp -d finapp
+      - name: Tear down isolated PostgreSQL smoke test
+        if: always()
+        working-directory: .
+        run: docker compose -p finapp-stage5-test -f docker-compose.stage5-test.yml down -v --remove-orphans
       - name: Run unit and route tests
         run: python -m unittest discover -s tests -v
       - name: Verify migration upgrade and downgrade on PostgreSQL
