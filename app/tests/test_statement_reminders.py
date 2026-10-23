@@ -22,8 +22,13 @@ class StatementReminderTests(unittest.TestCase):
         self.assertEqual(statement_reminder(self.card(), self.TODAY)["status"], "missing")
 
     def test_stale(self):
-        s = statement(date(2026, 9, 1), date(2026, 10, 1))
+        s = statement(date(2026, 9, 1), date(2026, 10, 1), paid="100")
         self.assertEqual(statement_reminder(self.card([s]), self.TODAY)["status"], "stale")
+
+    def test_old_unpaid_statement_is_overdue_not_merely_stale(self):
+        s = statement(date(2026, 9, 1), date(2026, 10, 1))
+        self.assertEqual(
+            statement_reminder(self.card([s]), self.TODAY)["status"], "overdue")
 
     def test_upcoming(self):
         s = statement(date(2026, 11, 1), date(2026, 11, 15))
