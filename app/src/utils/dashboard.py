@@ -231,8 +231,7 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
         promo_apr = getattr(card, "promotional_apr", None)
         promo_end = getattr(card, "promotional_apr_end_date", None)
         # A promotional rate is only applied while it is currently valid.
-        # The payoff estimate below uses a fixed rate and is therefore
-        # suppressed when a promotion will expire before payoff.
+        # The payoff estimate switches to the regular rate after expiration.
         effective_apr = (
             promo_apr if promo_apr is not None and promo_end is not None
             and today <= promo_end else standard_apr
@@ -246,12 +245,10 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
 
         payoff = None
         if effective_apr is not None:
-            payoff = payoff_estimate(projected_debt, effective_apr, suggested)
-            if promo_apr is not None and promo_end is not None and today <= promo_end:
-                # Do not project a fixed promo APR beyond its expiration.
-                from dateutil.relativedelta import relativedelta as _rd
-                if payoff is None or today + _rd(months=payoff["months"]) > promo_end:
-                    payoff = None
+            payoff = payoff_estimate(
+                projected_debt, standard_apr, suggested,
+                promotional_apr=promo_apr, promotional_end=promo_end, as_of=today,
+            )
 
         credit_card_summaries.append({
             "card": card,

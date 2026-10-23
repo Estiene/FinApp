@@ -89,6 +89,9 @@ def build_bill(form, existing=None):
     except (KeyError, ValueError, InvalidOperation):
         raise ValueError("Enter a valid account and positive amount (up to two decimals).")
 
+    if card_id is not None and not selected_card.is_active:
+        raise ValueError("Inactive credit cards cannot receive recurring bills. Choose an active card or bank account.")
+
     name = form.get("name", "").strip()
     owner = form.get("owner", "").strip()
     if not name or not owner:
@@ -123,9 +126,16 @@ def build_bill(form, existing=None):
 
 def build_income(form, existing=None):
     """Fill an Income instance (new or existing) from form data."""
+    try:
+        amount = Decimal(form.get('amount', ''))
+        if not amount.is_finite() or amount < 0 or amount.as_tuple().exponent < -2:
+            raise ValueError
+    except (InvalidOperation, ValueError):
+        flash('Enter a nonnegative income amount with up to two decimals.', 'danger')
+        return None
     inc = existing or Income()
     inc.name       = form['name']
-    inc.amount     = form['amount']
+    inc.amount     = amount
     inc.frequency  = form['frequency']
     inc.account_id = int(form['account_id'])
 
@@ -578,7 +588,7 @@ def delete_account(account_id):
 @bp.route('/bills/<int:bill_id>', methods=['GET', 'POST'])
 def bills(bill_id):
     accounts = Account.query.order_by(Account.name).all()
-    cards = CreditCard.query.order_by(CreditCard.name).all()
+    cards = CreditCard.query.filter_by(is_active=True).order_by(CreditCard.name).all()
 
     if request.method == 'POST':
         existing = Bill.query.get_or_404(bill_id) if bill_id else None
@@ -616,7 +626,7 @@ def incomes(income_id):
         existing = Income.query.get(income_id) if income_id else None
         inc = build_income(request.form, existing)
         if not inc:
-            # if build_income returned None, date parse failed
+            # Invalid income inputs leave the previously saved entry unchanged.
             route = ('main.incomes' if not income_id
                      else 'main.incomes')  # or 'main.edit_income'
             return redirect(url_for(route))
@@ -727,6 +737,7 @@ def report():
     # 6. Build report_data per account. Cash Flow uses planned card payments,
     # not completed payment history. Card-funded bills are not bank outflows.
     cards = CreditCard.query.all()
+    report_bills = Bill.query.all()
     report_data = []
     for acct in accounts:
         sb = starting_balances[acct.id]
@@ -746,7 +757,14 @@ def report():
         bill_map = {}
         bill_details = {}
         card_charge_map = {}
-        for b in acct.bills:
+        # Resolve future card purchases through the card's current payment account.
+        # The stored bill account may predate a card payment-account change.
+        for b in report_bills:
+            target_account = b.credit_card.payment_account_id if b.credit_card_id else b.account_id
+            if target_account != acct.id:
+                continue
+            if b.credit_card_id and not b.credit_card.is_active:
+                flash(f"Bill '{b.name}' references inactive card '{b.credit_card.name}'; move it to an active payment method. Card payments are not projected.", 'warning')
             for due in bill_dates(b, start_date, last_day):
                 if b.credit_card_id is not None:
                     # Display the charge, but do not subtract it from checking.

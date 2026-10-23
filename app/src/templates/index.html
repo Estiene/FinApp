@@ -161,7 +161,7 @@
                   Promotional APR of {{ summary.card.promotional_apr }}% ends
                   {{ summary.card.promotional_apr_end_date.strftime('%b %-d, %Y') }}.
                   {% if summary.payoff_estimate is none %}
-                    Payoff cannot be reliably estimated at a single APR across the promotional-rate change.
+                    Payoff is unavailable with the current payment settings.
                   {% endif %}
                 </div>
               {% endif %}
@@ -239,7 +239,7 @@
                     {% endif %}
                   </div>
                 </div>
-                <div class="form-text">Simplified monthly-interest estimate; assumes fixed payments and no new charges. Issuer calculations may differ.</div>
+                <div class="form-text">Simplified monthly-interest estimate; uses promotional APR for periods starting on or before its expiration, then regular APR. Assumes fixed payments and no new charges. Issuer calculations may differ.</div>
               </div>
               <div class="small text-body-secondary mt-3">
                 Balance snapshot:

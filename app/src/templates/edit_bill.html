@@ -23,6 +23,9 @@
           {% endfor %}
         </optgroup>
         <optgroup label="Credit cards">
+          {% if bill.credit_card and not bill.credit_card.is_active %}
+          <option value="" selected disabled>{{ bill.credit_card.name }} — inactive; choose another payment method</option>
+          {% endif %}
           {% for card in cards %}
           <option value="card:{{ card.id }}" {% if bill.credit_card_id == card.id %}selected{% endif %}>{{ card.name }}</option>
           {% endfor %}
