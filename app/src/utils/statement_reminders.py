@@ -34,9 +34,8 @@ def statement_reminder(card, today=None, stale_after_days=45, upcoming_days=7):
     # A newer confirmed statement must not conceal an older unpaid one.
     overdue = [
         statement for statement in statements
-        if unpaid_balance(statement) is not None
-        and unpaid_balance(statement) > 0
-        and statement.payment_due_date < today
+        if statement.payment_due_date < today
+        and (unpaid_balance(statement) or 0) > 0
     ]
     if overdue:
         earliest = min(overdue, key=lambda s: s.payment_due_date)
