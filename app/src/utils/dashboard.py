@@ -164,7 +164,6 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
                     bill_dates(bill, projection_start, today)
                 )
                 projected_balance -= _money(bill.amount) * count
-                        # Subtract completed credit card payments after the balance snapshot.
             # Subtract completed card payments after the balance snapshot.
             if credit_cards:
                 projected_balance -= recorded_payments_for_account(
@@ -176,8 +175,9 @@ def build_dashboard_data(accounts, today=None, credit_cards=None):
 
         reserved = ZERO
 
+        account_id = getattr(account, "id", None)
         for card in credit_cards:
-            if card.payment_account_id != getattr(account, "id", None):
+            if account_id is None or card.payment_account_id != account_id:
                 continue
 
             projected_debt = projected_card_balance(card, today)
